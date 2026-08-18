@@ -1,0 +1,29 @@
+eBay Ops Bot v0.14.0 — structure principale
+
+app/main.py                 FastAPI + dashboard + health
+app/static/app.js           logique complète de l'interface
+app/static/app.css          design responsive
+app/templates/dashboard.html interface utilisateur
+app/routers/products.py     produits / CSV / fiches
+app/routers/research.py     Données eBay Production uniquement
+app/routers/auth.py         OAuth eBay
+app/routers/ebay.py         listings / commandes / tracking
+app/routers/settings.py     paramètres eBay + Risk Engine
+app/routers/suppliers.py    gestion des fournisseurs
+app/routers/cj.py           connexion, recherche et sélection CJ
+app/routers/connections.py  centre de connexions officielles
+app/routers/finance.py      chiffre d'affaires, résultat et objectifs
+app/routers/radar.py        Radar 360, surveillance et devis usines
+app/routers/ui.py           résumé dashboard + diagnostics
+app/services/ebay.py        client API eBay
+app/services/cj.py          client officiel CJ en lecture seule
+app/services/connections.py tendances, DropXL et fournisseurs POD
+app/services/finance.py     agrégation des ventes réelles / commandes eBay
+app/services/radar.py       sources, relevés multi-pays et RFQ
+app/services/risk.py        règles de sécurité
+app/services/profit.py      calcul de rentabilité
+app/services/db.py          base SQLite locale
+
+LANCER_BOT.bat              installation/réparation + lancement automatique
+DIAGNOSTIC_WINDOWS.bat      diagnostic utilisateur
+REPAIR_WINDOWS.bat          réparation environnement Python

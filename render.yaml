@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: ebay-ops-bot
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /health
+    disk:
+      name: ops-bot-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_ACCESS_MODE
+        value: cloud
+      - key: APP_ADMIN_EMAIL
+        sync: false
+      - key: APP_ADMIN_PASSWORD
+        sync: false
+      - key: APP_SESSION_SECRET
+        generateValue: true
+      - key: APP_ENCRYPTION_KEY
+        generateValue: true
+      - key: APP_SESSION_DAYS
+        value: 30
+      - key: APP_RUNTIME_ENV_PATH
+        value: /data/runtime.env
+      - key: DATABASE_PATH
+        value: /data/ebay_bot.db
+      - key: BACKUP_ENABLED
+        value: true
+      - key: BACKUP_RETENTION
+        value: 14
+      - key: DEMO_MODE
+        value: true
+      - key: EBAY_ENV
+        value: sandbox
+      - key: EBAY_WRITE_ENABLED
+        value: false
+      - key: EBAY_PUBLISH_ENABLED
+        value: false
+      - key: SCHEDULER_ENABLED
+        value: false
+      - key: AUTO_ANALYSIS_ENABLED
+        value: true
+      - key: RADAR_AUTO_ENABLED
+        value: true

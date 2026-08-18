@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "eBay Ops Bot",
+  "short_name": "Ops Bot",
+  "description": "Pilotage produits, fournisseurs, tendances, ventes et SAV.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f6fb",
+  "theme_color": "#111827",
+  "icons": [
+    {"src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}

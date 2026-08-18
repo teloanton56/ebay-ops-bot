@@ -1,0 +1,19 @@
+eBay Ops Bot v0.14.0
+=====================
+
+WINDOWS :
+1) Extraire COMPLETEMENT le ZIP.
+2) Double-cliquer sur LANCER_BOT.bat.
+3) Attendre : le navigateur s'ouvre automatiquement quand le bot est pret.
+4) Garder la fenetre noire ouverte.
+
+Tu n'as plus besoin d'ouvrir Swagger / API Docs ou de modifier du code.
+
+En cas de souci : lance DIAGNOSTIC_WINDOWS.bat et ouvre diagnostic.txt.
+
+Adresse du bot : http://127.0.0.1:8765
+
+VERSION HÉBERGÉE :
+Le dossier est aussi prêt à être mis en ligne afin d'utiliser la même base sur
+Windows, Mac et iPhone. Suivre DEPLOIEMENT_CLOUD.txt. Une fois hébergé, il n'est
+plus nécessaire de garder une fenêtre noire ouverte sur l'ordinateur.

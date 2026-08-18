@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Connexion · Ops Bot</title>
+  <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-card">
+      <div class="login-brand"><div class="brand-mark">O</div><div><strong>Ops Bot</strong><span>Espace privé</span></div></div>
+      <div class="login-copy"><span class="eyebrow">ACCÈS SÉCURISÉ</span><h1>Heureux de vous revoir.</h1><p>Connectez-vous pour retrouver vos produits, fournisseurs et résultats sur tous vos appareils.</p></div>
+      {% if error %}<div class="error-box" role="alert">{{ error }}</div>{% endif %}
+      <form method="post" action="/api/cloud/login" class="login-form">
+        <label>Adresse e-mail<input name="email" type="email" autocomplete="username" required autofocus></label>
+        <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn btn-primary" type="submit">Ouvrir Ops Bot</button>
+      </form>
+      <div class="login-safety"><span>✓</span><p><strong>Mode protégé conservé</strong><br>Sandbox, démo et dry-run restent actifs après la connexion.</p></div>
+    </section>
+  </main>
+</body>
+</html>

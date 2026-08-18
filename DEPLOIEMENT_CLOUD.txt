@@ -1,0 +1,38 @@
+EBAY OPS BOT v0.14.0 — MISE EN LIGNE
+======================================
+
+Ce dossier est prêt pour un hébergement Docker avec disque persistant.
+La configuration Render fournie garde une seule base de données pour Windows,
+Mac et iPhone. Le disque persistant exige une formule Render payante.
+
+ÉTAPE 1 — METTRE LE DOSSIER SUR GITHUB
+1. Créez un dépôt GitHub privé.
+2. Ajoutez le contenu de ce dossier sans le fichier .env ni ebay_bot.db.
+
+ÉTAPE 2 — CRÉER LE SERVICE RENDER
+1. Dans Render, choisissez New > Blueprint.
+2. Reliez le dépôt GitHub privé.
+3. Render détecte render.yaml.
+4. Renseignez APP_ADMIN_EMAIL.
+5. Choisissez APP_ADMIN_PASSWORD avec au moins 12 caractères.
+6. Lancez le déploiement.
+
+ÉTAPE 3 — OUVRIR ET INSTALLER L'APPLICATION
+- Windows / Mac : ouvrez l'adresse HTTPS puis cliquez sur Installer l'application.
+- iPhone : ouvrez l'adresse dans Safari > Partager > Sur l'écran d'accueil.
+
+MISES À JOUR
+Chaque nouvelle version envoyée sur le dépôt redéploie le serveur. Tous les
+appareils ouvrent ensuite la nouvelle version sans réinstaller un ZIP.
+
+DONNÉES ET SÉCURITÉ
+- La base et runtime.env résident dans /data, le disque persistant.
+- Des sauvegardes SQLite sont créées chaque jour et téléchargeables dans Paramètres.
+- Ne perdez jamais APP_ENCRYPTION_KEY : elle protège les clés API déjà enregistrées.
+- Sandbox, mode démo et dry-run restent actifs par défaut.
+- Aucun port du PC personnel n'est exposé sur Internet.
+
+MIGRATION DE LA v0.13.0
+La base locale n'est pas copiée automatiquement vers Internet. Comme elle contient
+des clés chiffrées, la migration sera faite séparément et prudemment après le
+premier déploiement. Le catalogue peut aussi être réimporté par CSV.
