@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 set "OUT=diagnostic.txt"
 (
- echo eBay Ops Bot v0.14.1 - Diagnostic
+ echo eBay Ops Bot v0.14.2 - Diagnostic
  echo =================================
  echo Date: %date% %time%
  echo Dossier: %cd%

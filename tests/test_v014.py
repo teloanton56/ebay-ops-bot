@@ -99,6 +99,9 @@ def test_secure_diagnostic_excludes_credentials_and_private_records(tmp_path, mo
         "EBAY_CLIENT_SECRET": "EBAY_SECRET_PRIVATE_5931",
         "EBAY_RUNAME": "EBAY_RUNAME_PRIVATE_5931",
         "YOUTUBE_API_KEY": "YOUTUBE_PRIVATE_5931",
+        "AMAZON_SP_API_CLIENT_ID": "AMAZON_CLIENT_PRIVATE_5931",
+        "AMAZON_SP_API_CLIENT_SECRET": "AMAZON_SECRET_PRIVATE_5931",
+        "AMAZON_SP_API_REFRESH_TOKEN": "Atzr|AMAZON_REFRESH_PRIVATE_5931",
     }
     monkeypatch.setenv("APP_ACCESS_MODE", "local")
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "private-cloud.db"))
@@ -113,7 +116,7 @@ def test_secure_diagnostic_excludes_credentials_and_private_records(tmp_path, mo
     assert response.headers["content-type"].startswith("text/plain")
     assert "attachment" in response.headers["content-disposition"]
     assert "DIAGNOSTIC SÉCURISÉ" in response.text
-    assert "Version : 0.14.1" in response.text
+    assert "Version : 0.14.2" in response.text
     assert "Ce rapport exclut les mots de passe" in response.text
     assert "Produits : 0" in response.text
     assert str((tmp_path / "private-cloud.db").resolve()) not in response.text

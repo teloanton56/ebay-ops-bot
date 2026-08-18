@@ -9,8 +9,8 @@ from app.services.connections import (IntegrationError, YouTubeClient, connectio
 from app.services.db import (delete_factory_lead, delete_radar_watch, list_factory_leads, list_radar_scans,
                              delete_rfq, list_radar_watchlist, list_rfqs, list_trend_discoveries,
                              save_factory_lead, save_radar_watch, save_rfq)
-from app.services.radar import (MARKETPLACES, analyze_ebay_market, build_rfq_message,
-                                source_statuses)
+from app.services.radar import (AMAZON_MARKETPLACES, MARKETPLACES, analyze_amazon_market,
+                                analyze_ebay_market, build_rfq_message, source_statuses)
 
 
 router = APIRouter(prefix="/api/radar", tags=["Radar 360"])
@@ -23,7 +23,8 @@ class WatchIn(BaseModel):
 
 class ScanIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
-    marketplaces: list[str] = Field(min_length=1, max_length=6)
+    marketplaces: list[str] = Field(default_factory=list, max_length=6)
+    amazon_marketplaces: list[str] = Field(default_factory=list, max_length=6)
 
 
 class FactoryIn(BaseModel):
@@ -93,16 +94,33 @@ async def discover_without_keyword(payload: DiscoveryIn):
 
 @router.post("/scan")
 async def run_radar_scan(payload: ScanIn):
+    if not payload.marketplaces and not payload.amazon_marketplaces:
+        raise HTTPException(400, "Sélectionnez au moins un marché eBay ou Amazon")
     invalid = [market for market in payload.marketplaces if market not in MARKETPLACES]
+    invalid.extend(market for market in payload.amazon_marketplaces if market not in AMAZON_MARKETPLACES)
     if invalid:
         raise HTTPException(400, "Marketplace non prise en charge : " + ", ".join(invalid))
-    ebay = next(x for x in source_statuses() if x["id"] == "ebay")
-    if not ebay["ready"]:
-        raise HTTPException(400, "Les clés eBay Production sont nécessaires pour analyser la demande réelle. Aucun résultat Sandbox n'est utilisé.")
-    results = await asyncio.gather(*(analyze_ebay_market(payload.keyword, market)
-                                     for market in payload.marketplaces), return_exceptions=True)
-    markets, errors = [], []
-    for market, result in zip(payload.marketplaces, results):
+    statuses = {row["id"]: row for row in source_statuses()}
+    calls, selected, errors = [], [], []
+    if payload.marketplaces:
+        if statuses["ebay"]["ready"]:
+            for market in payload.marketplaces:
+                calls.append(analyze_ebay_market(payload.keyword, market))
+                selected.append(market)
+        else:
+            errors.append({"marketplace": "eBay", "message": "Les clés eBay Production sont nécessaires. Aucun résultat Sandbox n'est utilisé."})
+    if payload.amazon_marketplaces:
+        if statuses["amazon"]["ready"]:
+            for market in payload.amazon_marketplaces:
+                calls.append(analyze_amazon_market(payload.keyword, market))
+                selected.append(market)
+        else:
+            errors.append({"marketplace": "Amazon", "message": "Connectez et testez Amazon SP-API dans Connexions."})
+    if not calls:
+        raise HTTPException(400, errors[0]["message"])
+    results = await asyncio.gather(*calls, return_exceptions=True)
+    markets = []
+    for market, result in zip(selected, results):
         if isinstance(result, Exception):
             errors.append({"marketplace": market, "message": str(result)})
         else:
@@ -110,7 +128,8 @@ async def run_radar_scan(payload: ScanIn):
     if not markets and errors:
         raise HTTPException(400, errors[0]["message"])
     return {"keyword": payload.keyword, "markets": markets, "errors": errors,
-            "measured_only": True, "note": "Les conversions concurrentes et volumes de recherche non publics restent indisponibles."}
+            "measured_only": True,
+            "note": "Amazon fournit un catalogue estimé et des rangs, pas le volume exact de recherches ni les conversions concurrentes."}
 
 
 @router.get("/supplier-match")

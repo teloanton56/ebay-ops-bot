@@ -23,6 +23,13 @@ CREDENTIAL_RECOVERY_MESSAGE = "Identifiants locaux incompatibles — reconnectez
 
 
 PROVIDERS = {
+    "amazon": {
+        "name": "Amazon SP-API Radar", "kind": "Marketplace en lecture seule",
+        "required": ("client_id", "client_secret", "refresh_token"),
+        "mask_field": "refresh_token",
+        "docs_url": "https://developer-docs.amazon.com/sp-api/docs/onboarding-overview",
+        "note": "Catalogue, catégories et classements Amazon. Aucune annonce, commande ou modification Amazon.",
+    },
     "tiktok": {
         "name": "TikTok Commercial Content", "kind": "Tendances publicitaires UE",
         "required": ("client_key", "client_secret"),
@@ -176,6 +183,11 @@ def extract_trend_themes(videos: list[dict[str, Any]], limit: int = 12) -> list[
 
 def _env_credentials(provider: str) -> dict[str, str]:
     mapping = {
+        "amazon": {
+            "client_id": "AMAZON_SP_API_CLIENT_ID",
+            "client_secret": "AMAZON_SP_API_CLIENT_SECRET",
+            "refresh_token": "AMAZON_SP_API_REFRESH_TOKEN",
+        },
         "tiktok": {"client_key": "TIKTOK_CLIENT_KEY", "client_secret": "TIKTOK_CLIENT_SECRET"},
         "youtube": {"api_key": "YOUTUBE_API_KEY"},
         "etsy": {"api_key": "ETSY_API_KEY"},
@@ -284,6 +296,191 @@ def _rows(payload: Any) -> list[dict]:
                 if nested:
                     return nested
     return []
+
+
+class AmazonRadarClient:
+    """Read-only Amazon SP-API client used only by the market Radar."""
+
+    token_url = "https://api.amazon.com/auth/o2/token"
+    marketplaces = {
+        "AMAZON_FR": {"id": "A13V1IB3VIYZZH", "name": "Amazon France", "endpoint": "https://sellingpartnerapi-eu.amazon.com", "domain": "amazon.fr", "currency": "EUR"},
+        "AMAZON_DE": {"id": "A1PA6795UKMFR9", "name": "Amazon Allemagne", "endpoint": "https://sellingpartnerapi-eu.amazon.com", "domain": "amazon.de", "currency": "EUR"},
+        "AMAZON_IT": {"id": "APJ6JRA9NG5V4", "name": "Amazon Italie", "endpoint": "https://sellingpartnerapi-eu.amazon.com", "domain": "amazon.it", "currency": "EUR"},
+        "AMAZON_ES": {"id": "A1RKKUPIHCS9HS", "name": "Amazon Espagne", "endpoint": "https://sellingpartnerapi-eu.amazon.com", "domain": "amazon.es", "currency": "EUR"},
+        "AMAZON_GB": {"id": "A1F83G8C2ARO7P", "name": "Amazon Royaume-Uni", "endpoint": "https://sellingpartnerapi-eu.amazon.com", "domain": "amazon.co.uk", "currency": "GBP"},
+        "AMAZON_US": {"id": "ATVPDKIKX0DER", "name": "Amazon États-Unis", "endpoint": "https://sellingpartnerapi-na.amazon.com", "domain": "amazon.com", "currency": "USD"},
+    }
+
+    def __init__(self):
+        self.credentials = load_credentials("amazon")
+        self._cached_access_token = ""
+
+    @staticmethod
+    def _safe_error(response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        message = payload.get("error_description") or payload.get("message") or payload.get("error") or "Accès refusé"
+        if isinstance(message, dict):
+            message = message.get("message") or message.get("code") or "Accès refusé"
+        return str(message)[:300]
+
+    async def _access_token(self) -> str:
+        if self._cached_access_token:
+            return self._cached_access_token
+        missing = [field for field in PROVIDERS["amazon"]["required"] if not self.credentials.get(field)]
+        if missing:
+            raise IntegrationError("Identifiants Amazon SP-API incomplets")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(self.token_url, data={
+                "grant_type": "refresh_token",
+                "refresh_token": self.credentials["refresh_token"],
+                "client_id": self.credentials["client_id"],
+                "client_secret": self.credentials["client_secret"],
+            }, headers={"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"})
+        if response.is_error:
+            raise IntegrationError("Amazon LWA refuse la connexion : " + self._safe_error(response))
+        payload = response.json()
+        token = str(payload.get("access_token") or "") if isinstance(payload, dict) else ""
+        if not token:
+            raise IntegrationError("Amazon n'a pas renvoyé de jeton d'accès")
+        self._cached_access_token = token
+        return token
+
+    async def _get(self, market: dict[str, str], path: str, params: dict[str, Any]) -> dict:
+        token = await self._access_token()
+        headers = {
+            "x-amz-access-token": token,
+            "x-amz-date": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            "user-agent": "eBayOpsBot/0.14.2 (Language=Python)",
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(market["endpoint"] + path, params=params, headers=headers)
+        if response.is_error:
+            raise IntegrationError("Amazon SP-API refuse le relevé : " + self._safe_error(response))
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise IntegrationError("Réponse Amazon illisible") from exc
+
+    @staticmethod
+    def _market_group(groups: Any, marketplace_id: str) -> dict[str, Any]:
+        if not isinstance(groups, list):
+            return {}
+        return next((row for row in groups if isinstance(row, dict) and row.get("marketplaceId") == marketplace_id),
+                    next((row for row in groups if isinstance(row, dict)), {}))
+
+    @classmethod
+    def normalize_catalog(cls, payload: dict, marketplace: str) -> dict:
+        market = cls.marketplaces[marketplace]
+        marketplace_id = market["id"]
+        products = []
+        for row in payload.get("items") or []:
+            if not isinstance(row, dict):
+                continue
+            asin = str(row.get("asin") or "").strip()
+            summary = cls._market_group(row.get("summaries"), marketplace_id)
+            image_group = cls._market_group(row.get("images"), marketplace_id)
+            rank_group = cls._market_group(row.get("salesRanks"), marketplace_id)
+            class_group = cls._market_group(row.get("classifications"), marketplace_id)
+            images = image_group.get("images") or []
+            image = next((item for item in images if item.get("variant") == "MAIN"), images[0] if images else {})
+            ranks = []
+            for key in ("classificationRanks", "displayGroupRanks"):
+                for item in rank_group.get(key) or []:
+                    try:
+                        rank = int(item.get("rank"))
+                    except (AttributeError, TypeError, ValueError):
+                        continue
+                    ranks.append((rank, item))
+            best_rank, best_rank_row = min(ranks, key=lambda pair: pair[0]) if ranks else (None, {})
+            classifications = class_group.get("classifications") or []
+            category = str((classifications[0] if classifications else {}).get("displayName") or
+                           best_rank_row.get("title") or "Catégorie non fournie")
+            products.append({
+                "asin": asin,
+                "title": str(summary.get("itemName") or asin or "Produit Amazon"),
+                "brand": str(summary.get("brand") or ""),
+                "category": category,
+                "sales_rank": best_rank,
+                "image_url": str(image.get("link") or ""),
+                "url": f"https://www.{market['domain']}/dp/{asin}" if asin else "",
+                "price": None,
+                "currency": market["currency"],
+                "offer_count": None,
+            })
+        total = payload.get("numberOfResults")
+        if total is None and isinstance(payload.get("pagination"), dict):
+            total = payload["pagination"].get("numberOfResults")
+        try:
+            total = int(total)
+        except (TypeError, ValueError):
+            total = len(products)
+        return {"products": products, "total": total}
+
+    @staticmethod
+    def apply_pricing(products: list[dict], payload: dict) -> None:
+        rows = payload.get("payload") if isinstance(payload, dict) else payload
+        if not isinstance(rows, list):
+            return
+        by_asin = {str(row.get("ASIN") or row.get("asin") or ""): row for row in rows if isinstance(row, dict)}
+        for product in products:
+            row = by_asin.get(product["asin"]) or {}
+            competitive = ((row.get("Product") or {}).get("CompetitivePricing") or {})
+            amounts, currencies = [], []
+            for price_row in competitive.get("CompetitivePrices") or []:
+                price = price_row.get("Price") or {}
+                landed = price.get("LandedPrice") or price.get("ListingPrice") or {}
+                try:
+                    amounts.append(float(landed.get("Amount")))
+                except (TypeError, ValueError):
+                    continue
+                if landed.get("CurrencyCode"):
+                    currencies.append(str(landed["CurrencyCode"]))
+            offers = competitive.get("NumberOfOfferListings") or []
+            product["price"] = min(amounts) if amounts else None
+            product["currency"] = currencies[0] if currencies else product["currency"]
+            offer_count = 0
+            for item in offers:
+                try:
+                    offer_count += int(item.get("Count") or 0)
+                except (AttributeError, TypeError, ValueError):
+                    continue
+            product["offer_count"] = offer_count or None
+
+    async def search_catalog(self, keyword: str, marketplace: str = "AMAZON_FR", page_size: int = 20,
+                             include_pricing: bool = True) -> dict:
+        if marketplace not in self.marketplaces:
+            raise IntegrationError("Marketplace Amazon inconnue")
+        market = self.marketplaces[marketplace]
+        payload = await self._get(market, "/catalog/2022-04-01/items", {
+            "marketplaceIds": market["id"],
+            "keywords": keyword,
+            "includedData": "summaries,images,salesRanks,classifications",
+            "pageSize": min(max(int(page_size), 1), 20),
+        })
+        result = self.normalize_catalog(payload, marketplace)
+        result.update({"marketplace": marketplace, "marketplace_name": market["name"],
+                       "currency": market["currency"], "pricing_available": False})
+        asins = [row["asin"] for row in result["products"] if row.get("asin")]
+        if include_pricing and asins:
+            try:
+                pricing = await self._get(market, "/products/pricing/v0/competitivePrice", {
+                    "MarketplaceId": market["id"], "ItemType": "Asin", "Asins": ",".join(asins[:20]),
+                })
+                self.apply_pricing(result["products"], pricing)
+                result["pricing_available"] = any(row.get("price") is not None for row in result["products"])
+            except IntegrationError:
+                # Catalog access remains useful when Amazon has not granted the optional Pricing role.
+                result["pricing_available"] = False
+        return result
+
+    async def test(self) -> dict:
+        result = await self.search_catalog("portable fan", "AMAZON_FR", page_size=1, include_pricing=False)
+        return {"ok": True, "observed": len(result["products"]), "marketplace": "Amazon France"}
 
 
 class YouTubeClient:
@@ -725,6 +922,7 @@ class GelatoClient:
 
 async def test_provider(provider: str) -> dict:
     clients = {
+        "amazon": AmazonRadarClient,
         "youtube": YouTubeClient, "etsy": EtsyClient, "tiktok": TikTokClient,
         "dropxl": DropXLClient, "printful": PrintfulClient,
         "printify": PrintifyClient, "gelato": GelatoClient,

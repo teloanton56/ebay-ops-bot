@@ -1,6 +1,15 @@
-# eBay Ops Bot v0.14.1
+# eBay Ops Bot v0.14.2
 
-Application cloud et locale pensée pour être utilisée sans connaissances en programmation. La v0.14.1 garde le parcours **détecter une piste → trouver un fournisseur → calculer le coût réel → créer un produit → vendre → suivre le SAV**, avec les mêmes données sur Windows, Mac et iPhone après hébergement.
+Application cloud et locale pensée pour être utilisée sans connaissances en programmation. La v0.14.2 garde le parcours **détecter une piste → trouver un fournisseur → calculer le coût réel → créer un produit → vendre → suivre le SAV**, avec les mêmes données sur Windows, Mac et iPhone après hébergement.
+
+## Nouveautés v0.14.2
+
+- connecteur Amazon SP-API strictement limité au Radar et à la lecture seule ;
+- relevés Amazon France, Allemagne, Italie, Espagne, Royaume-Uni et États-Unis ;
+- catalogue, catégories, rangs de vente et historique des résultats disponibles ;
+- prix et nombre d'offres ajoutés lorsque le rôle Amazon Pricing est autorisé ;
+- surveillance Amazon France automatique toutes les six heures pour les produits suivis ;
+- Amazon fonctionne dans le Radar indépendamment de la connexion eBay Production.
 
 ## Nouveautés v0.14.1
 

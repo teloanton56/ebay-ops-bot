@@ -121,7 +121,7 @@ def test_v0110_dashboard_is_simplified_and_real_data_only():
     assert "CENTRE DE CONNEXIONS" in response.text
     assert "Product Finder" not in response.text
     assert "résultats simulés" not in response.text
-    assert "v0.14.1" in response.text
+    assert "v0.14.2" in response.text
     assert "BigBuy" not in response.text
     assert "DropXL / vidaXL" in response.text
     assert "HyperSKU" in response.text
@@ -318,7 +318,7 @@ def test_radar_sources_only_show_usable_connectors():
     db.init_db()
     save_credentials("youtube", {"api_key": "stored-key"})
     sources = {source["id"]: source for source in source_statuses()}
-    assert set(sources) == {"ebay", "cj", "tiktok", "youtube", "etsy", "dropxl",
+    assert set(sources) == {"ebay", "amazon", "cj", "tiktok", "youtube", "etsy", "dropxl",
                             "printful", "printify", "gelato"}
     assert sources["youtube"]["configured"] is True
     assert sources["youtube"]["ready"] is False
@@ -408,7 +408,7 @@ def test_connections_endpoint_has_no_pinterest_or_reddit():
     db.init_db()
     payload = TestClient(app).get("/api/connections").json()
     ids = {source["id"] for source in payload["sources"]}
-    assert ids == {"tiktok", "youtube", "etsy", "dropxl", "printful", "printify", "gelato"}
+    assert ids == {"amazon", "tiktok", "youtube", "etsy", "dropxl", "printful", "printify", "gelato"}
     assert "Pinterest" not in str(payload)
     assert "Reddit" not in str(payload)
     assert any(row["id"] == "aliexpress" for row in payload["restricted"])

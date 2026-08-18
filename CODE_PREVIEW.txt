@@ -1,4 +1,4 @@
-eBay Ops Bot v0.14.1 — structure principale
+eBay Ops Bot v0.14.2 — structure principale
 
 app/main.py                 FastAPI + dashboard + health
 app/static/app.js           logique complète de l'interface

@@ -35,10 +35,13 @@ async def scheduled_sync():
 async def scheduled_radar():
     # The YouTube chart costs far less quota than keyword searches and provides
     # a safe seed for automatic discovery without pretending to know sales.
-    from app.services.connections import YouTubeClient, connection_statuses, scan_connected_sources
-    sources = [row["id"] for row in connection_statuses()
+    from app.services.connections import YouTubeClient, connection_status, connection_statuses, scan_connected_sources
+    from app.services.radar import analyze_amazon_market
+    statuses = connection_statuses()
+    sources = [row["id"] for row in statuses
                if row["connected"] and row["id"] in {"tiktok", "youtube", "etsy"}]
-    if not sources:
+    amazon_ready = connection_status("amazon")["connected"]
+    if not sources and not amazon_ready:
         return
     if "youtube" in sources:
         try:
@@ -47,11 +50,18 @@ async def scheduled_radar():
             pass
     # Ten watched terms every six hours stays inside the configured daily quota.
     for watch in list_radar_watchlist()[:10]:
-        try:
-            await scan_connected_sources(watch["keyword"], sources, "FR")
-        except Exception:
-            # A source can be temporarily rate-limited; the next scheduled pass will retry.
-            continue
+        if sources:
+            try:
+                await scan_connected_sources(watch["keyword"], sources, "FR")
+            except Exception:
+                # A source can be temporarily rate-limited; the next scheduled pass will retry.
+                pass
+        if amazon_ready:
+            try:
+                await analyze_amazon_market(watch["keyword"], "AMAZON_FR")
+            except Exception:
+                # Catalog or Pricing can be temporarily throttled; the next pass will retry.
+                pass
 
 
 async def scheduled_backup():

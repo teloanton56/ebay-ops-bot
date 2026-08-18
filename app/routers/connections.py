@@ -16,8 +16,10 @@ class ConnectionIn(BaseModel):
     api_key: str | None = Field(default=None, max_length=1000)
     api_email: str | None = Field(default=None, max_length=320)
     api_token: str | None = Field(default=None, max_length=2000)
+    client_id: str | None = Field(default=None, max_length=1000)
     client_key: str | None = Field(default=None, max_length=1000)
     client_secret: str | None = Field(default=None, max_length=2000)
+    refresh_token: str | None = Field(default=None, max_length=4000)
     environment: Literal["production", "sandbox"] | None = None
 
 
@@ -38,9 +40,6 @@ def list_connections():
             {"id": "google_trends", "name": "Google Trends", "status": "Accès Alpha à demander",
              "url": "https://developers.google.com/search/apis/trends",
              "note": "Le connecteur sera activé uniquement après acceptation officielle de Google."},
-            {"id": "amazon", "name": "Amazon SP-API", "status": "Compte vendeur professionnel requis",
-             "url": "https://developer-docs.amazon.com/sp-api/docs/onboarding-overview",
-             "note": "Connexion possible après validation du profil développeur et des rôles Amazon."},
             {"id": "meta", "name": "Meta Ad Library", "status": "Autorisation Meta requise",
              "url": "https://www.facebook.com/ads/library/api/",
              "note": "Les annonces peuvent être observées, jamais les conversions concurrentes."},
