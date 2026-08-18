@@ -30,6 +30,7 @@
       <button class="nav-item" data-section="support"><span class="nav-icon">♡</span><span>SAV</span><span id="navSupportCount" class="nav-count">0</span></button>
       <button class="nav-item" data-section="finance"><span class="nav-icon">€</span><span>Finance</span></button>
       <button class="nav-item" data-section="connections"><span class="nav-icon">⇄</span><span>Connexions</span><span id="navConnectionCount" class="nav-count">0</span></button>
+      <button class="nav-item" data-section="help"><span class="nav-icon">?</span><span>Aide</span></button>
       <button class="nav-item" data-section="settings"><span class="nav-icon">⚙</span><span>Paramètres</span></button>
     </nav>
 
@@ -99,6 +100,7 @@
               <button class="quick-card" data-action="add-product"><span>＋</span><strong>Ajouter un produit</strong><small>Saisie manuelle simple</small></button>
               <button class="quick-card" data-action="connect-ebay"><span>↗</span><strong>Configurer eBay</strong><small>Clés + connexion OAuth</small></button>
               <button class="quick-card" data-go="settings"><span>⚙</span><strong>Règles de marge</strong><small>Risk Engine et frais</small></button>
+              <button class="quick-card" data-go="help"><span>?</span><strong>Comprendre le bot</strong><small>Guide complet pour l’équipe</small></button>
             </div>
           </article>
         </div>
@@ -337,6 +339,52 @@
         <div class="connection-security-note"><span>✓</span><div><strong>Lecture seule par défaut</strong><p>Les identifiants restent dans votre espace privé protégé. Les connecteurs de tendances et fournisseurs ne publient rien et ne passent aucune commande.</p></div></div>
       </section>
 
+      <section id="section-help" class="page-section">
+        <div class="section-head row-between"><div><span class="eyebrow">GUIDE DE L’ÉQUIPE</span><h1>Comprendre et utiliser Ops Bot</h1><p>Ce guide explique le parcours complet, ce que chaque onglet mesure réellement et les validations qui restent humaines.</p></div><span class="status-badge good">Débutant bienvenu</span></div>
+
+        <article class="panel help-intro">
+          <div><span class="panel-kicker">LE PRINCIPE</span><h2>Une opportunité doit franchir six étapes avant une vente.</h2><p>Le bot rassemble les informations et automatise les contrôles répétitifs. Il ne transforme jamais une simple tendance en produit gagnant sans fournisseur, coût livré, demande mesurée et validation humaine.</p></div>
+          <div class="help-flow" aria-label="Parcours recommandé">
+            <button data-go="connections"><span>1</span><strong>Connecter</strong><small>Sources officielles</small></button>
+            <button data-go="radar"><span>2</span><strong>Détecter</strong><small>Tendances réelles</small></button>
+            <button data-go="suppliers"><span>3</span><strong>Sourcer</strong><small>Prix et qualité</small></button>
+            <button data-go="catalog"><span>4</span><strong>Valider</strong><small>Marge et risques</small></button>
+            <button data-go="ebay"><span>5</span><strong>Préparer</strong><small>Annonce eBay</small></button>
+            <button data-go="support"><span>6</span><strong>Suivre</strong><small>Ventes et SAV</small></button>
+          </div>
+        </article>
+
+        <div class="help-grid">
+          <article class="help-card"><div class="help-card-icon">⌂</div><div><span>VUE D’ENSEMBLE</span><h2>Le tableau de bord</h2><p>Affiche le nombre de produits, les contrôles Risk Engine, les annonces suivies et l’état du compte eBay. La checklist indique ce qu’il reste à configurer.</p><button class="mini-btn" data-go="overview">Ouvrir la vue d’ensemble</button></div></article>
+          <article class="help-card"><div class="help-card-icon">◉</div><div><span>RADAR MARCHÉ</span><h2>Repérer puis confirmer une niche</h2><p>YouTube peut détecter automatiquement des thèmes publics récurrents. TikTok et Etsy servent à recouper une piste. eBay Production mesure les résultats visibles ; aucun volume de recherche ou taux de conversion privé n’est inventé.</p><button class="mini-btn" data-go="radar">Ouvrir le Radar</button></div></article>
+          <article class="help-card"><div class="help-card-icon">♙</div><div><span>FOURNISSEURS</span><h2>Trouver l’offre adaptée</h2><p>Compare les catalogues API connectés, les imports CSV et l’annuaire de niche. Les contacts fabricants et RFQ restent des pistes ou brouillons : aucun message et aucune commande ne partent seuls.</p><button class="mini-btn" data-go="suppliers">Voir les fournisseurs</button></div></article>
+          <article class="help-card"><div class="help-card-icon">▦</div><div><span>PRODUITS</span><h2>Contrôler rentabilité et préparation</h2><p>Centralise produits manuels, CSV et fournisseurs. Le score produit /100 mesure la préparation de la fiche, du stock, du délai et de la marge ; le signal de demande eBay reste séparé. Les statuts sont À tester, Winner ou Rejeté.</p><button class="mini-btn" data-go="catalog">Voir les produits</button></div></article>
+          <article class="help-card"><div class="help-card-icon">◇</div><div><span>CANAUX DE VENTE</span><h2>Préparer les annonces</h2><p>eBay est le premier canal opérationnel. Le bot prépare titres, descriptions, prix, quantités et brouillons. Sandbox et dry-run restent les protections par défaut ; une publication réelle exige une décision explicite.</p><button class="mini-btn" data-go="ebay">Voir les canaux</button></div></article>
+          <article class="help-card"><div class="help-card-icon">♡</div><div><span>SAV</span><h2>Traiter les demandes clients</h2><p>Classe les dossiers par priorité, statut et échéance, puis prépare une réponse relisible. Les brouillons ne sont jamais envoyés automatiquement au client.</p><button class="mini-btn" data-go="support">Ouvrir le SAV</button></div></article>
+          <article class="help-card"><div class="help-card-icon">€</div><div><span>FINANCE</span><h2>Suivre les résultats réels</h2><p>Le chiffre d’affaires, les coûts et le résultat net viennent des ventes réellement récupérées. Sans vente connectée, les montants restent à zéro. Les paliers 5K, 10K, 50K et 100K sont des objectifs, pas des prévisions.</p><button class="mini-btn" data-go="finance">Voir les finances</button></div></article>
+          <article class="help-card"><div class="help-card-icon">⇄</div><div><span>CONNEXIONS</span><h2>Brancher les sources officielles</h2><p>Regroupe eBay, CJ, YouTube, TikTok, Etsy et les fournisseurs disponibles. Une clé enregistrée n’est considérée comme connectée qu’après un vrai test auprès du service concerné.</p><button class="mini-btn" data-go="connections">Gérer les connexions</button></div></article>
+          <article class="help-card"><div class="help-card-icon">⚙</div><div><span>PARAMÈTRES</span><h2>Protéger et diagnostiquer</h2><p>Permet de régler les seuils de marge et de risque, installer l’app, créer des sauvegardes et exporter un diagnostic sécurisé. Les mises à jour sont déployées automatiquement sur tous les appareils.</p><button class="mini-btn" data-go="settings">Ouvrir les paramètres</button></div></article>
+        </div>
+
+        <div class="two-col help-guardrails">
+          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">AUTOMATISÉ</span><h2>Ce que le bot peut faire seul</h2></div><span class="status-badge good">Sans publication</span></div><ul><li>Relever des signaux depuis les sources connectées.</li><li>Recalculer marges, prix conseillés, scores et alertes.</li><li>Surveiller stock, délais et variations de coût disponibles.</li><li>Préparer des annonces, RFQ et réponses SAV en brouillon.</li><li>Mettre à jour l’application et sauvegarder la base.</li></ul></article>
+          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">VALIDATION HUMAINE</span><h2>Ce qui demande toujours un accord</h2></div><span class="status-badge review">Contrôle obligatoire</span></div><ul><li>Choisir définitivement un produit et vérifier sa conformité.</li><li>Commander un échantillon ou négocier avec une usine.</li><li>Envoyer un RFQ, un message client ou une commande.</li><li>Activer eBay Production et publier une annonce réelle.</li><li>Modifier les règles financières ou partager un accès.</li></ul></article>
+        </div>
+
+        <article class="panel help-faq"><div class="panel-head"><div><span class="panel-kicker">QUESTIONS COURANTES</span><h2>Les réponses à connaître</h2></div></div>
+          <div class="faq-list">
+            <details><summary>Un score produit élevé signifie-t-il que le produit va se vendre ?</summary><p>Non. Il indique que l’offre est bien préparée selon les données disponibles. La demande eBay doit être mesurée séparément, puis confirmée par un test réel à petite échelle.</p></details>
+            <details><summary>Pourquoi la Finance affiche-t-elle zéro ?</summary><p>Parce que le bot ne fabrique aucune prévision. Les montants apparaissent uniquement après récupération de vraies commandes depuis un canal connecté.</p></details>
+            <details><summary>Le bot peut-il publier ou commander tout seul ?</summary><p>Pas dans la configuration actuelle. Sandbox, mode démo et dry-run bloquent les écritures et publications. Les commandes fournisseur et messages restent eux aussi bloqués.</p></details>
+            <details><summary>Comment importer le catalogue d’un fournisseur ?</summary><p>Utilisez son connecteur API lorsqu’il existe. Sinon, téléchargez le modèle depuis Produits, remplissez au minimum le SKU, le titre et le coût fournisseur, puis importez le CSV.</p></details>
+            <details><summary>Comment obtenir de l’aide sans exposer les clés ?</summary><p>Dans Paramètres, cliquez sur « Exporter le diagnostic sécurisé ». Le fichier contient des états et compteurs, jamais les secrets, clients, commandes ou contenus privés.</p></details>
+            <details><summary>Comment arrivent les mises à jour ?</summary><p>Les nouvelles versions sont testées, envoyées sur GitHub puis déployées automatiquement par Render. Fermez et rouvrez l’application pour charger immédiatement la dernière version.</p></details>
+          </div>
+        </article>
+
+        <article class="help-team-note"><span>!</span><div><strong>Accès de l’associé</strong><p>Cette version possède encore un seul compte administrateur. Ne transmettez jamais le mot de passe par message non sécurisé. Des comptes individuels avec droits séparés pourront être ajoutés dans une prochaine version.</p></div></article>
+      </section>
+
       <section id="section-settings" class="page-section">
         <div class="section-head"><div><span class="eyebrow">RÈGLES & DIAGNOSTIC</span><h1>Paramètres</h1><p>Ajustez la sécurité financière et contrôlez l’état du bot.</p></div></div>
         <div class="settings-grid">
@@ -373,8 +421,9 @@
           </article>
 
           <article class="panel settings-card full-card">
-            <div class="panel-head"><div><span class="panel-kicker">DIAGNOSTIC</span><h2>État du système</h2></div><button id="refreshDiagnostic" class="btn btn-ghost">Actualiser</button></div>
+            <div class="panel-head"><div><span class="panel-kicker">DIAGNOSTIC</span><h2>État du système <span class="help-tip" tabindex="0" data-tip="Le rapport contient uniquement des états techniques et des compteurs. Il exclut les clés, jetons, clients, commandes, messages et titres produits.">?</span></h2><p>Téléchargez un rapport lisible et sûr à transmettre en cas de problème.</p></div><div class="panel-actions"><button id="refreshDiagnostic" class="btn btn-ghost">Actualiser</button><button id="exportDiagnostic" class="btn btn-primary">↓ Exporter le diagnostic sécurisé</button></div></div>
             <div id="systemDiagnostic" class="diagnostic-grid"></div>
+            <div class="diagnostic-privacy"><span>✓</span><div><strong>Aucun secret exporté</strong><p>Mots de passe, clés API, jetons eBay/CJ, données clients, références de commandes et contenus privés sont volontairement absents.</p></div></div>
           </article>
         </div>
       </section>

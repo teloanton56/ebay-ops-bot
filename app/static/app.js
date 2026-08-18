@@ -15,6 +15,7 @@
     support:['SAV','Demandes clients, délais et brouillons de réponse.'],
     finance:['Finance','Chiffre d’affaires, résultat et objectifs.'],
     connections:['Connexions','eBay, tendances et fournisseurs officiels.'],
+    help:['Aide','Guide complet des fonctions et règles de sécurité.'],
     settings:['Paramètres','Règles de marge, sécurité et diagnostic.']
   };
 
@@ -100,6 +101,20 @@
   async function logoutCloud(){
     await fetchJson('/api/cloud/logout',{method:'POST'});
     location.assign('/login');
+  }
+
+  async function exportSafeDiagnostic(){
+    const button=$('#exportDiagnostic');button.disabled=true;button.textContent='Préparation…';
+    try{
+      const response=await fetch('/api/ui/diagnostic-export');
+      if(response.status===401){location.assign('/login');return;}
+      if(!response.ok)throw new Error(`Erreur ${response.status}`);
+      const disposition=response.headers.get('content-disposition')||'';
+      const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||'diagnostic-opsbot.txt';
+      const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');
+      link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Diagnostic sécurisé téléchargé');
+    }finally{button.disabled=false;button.textContent='↓ Exporter le diagnostic sécurisé';}
   }
 
   function toast(msg) {
@@ -498,7 +513,7 @@
     }catch(e){toast('Paramètres indisponibles : '+e.message);}
   }
 
-  function renderSystem(s){ $('#systemDiagnostic').innerHTML=[['Version',s.version],['Python',s.python],['Environnement',s.environment],['Base locale',s.database_exists?'OK':'À créer'],['Mode démo',s.demo_mode?'Oui':'Non'],['Écriture eBay',s.write_enabled?'ACTIVE':'Bloquée'],['Publication',s.publish_enabled?'ACTIVE':'Bloquée'],['Adresse','127.0.0.1:8765']].map(([a,b])=>`<div class="diagnostic-item"><small>${esc(a)}</small><strong>${esc(b)}</strong></div>`).join(''); }
+  function renderSystem(s){ $('#systemDiagnostic').innerHTML=[['Version',s.version],['Python',s.python],['Environnement',s.environment],['Base de données',s.database_exists?'OK':'À créer'],['Mode démo',s.demo_mode?'Oui':'Non'],['Écriture eBay',s.write_enabled?'ACTIVE':'Bloquée'],['Publication',s.publish_enabled?'ACTIVE':'Bloquée'],['Accès',s.mode==='cloud'?'Cloud sécurisé':'Local']].map(([a,b])=>`<div class="diagnostic-item"><small>${esc(a)}</small><strong>${esc(b)}</strong></div>`).join(''); }
 
   async function saveEbaySettings(form){
     const fd=new FormData(form); const payload=Object.fromEntries(fd.entries());
@@ -591,6 +606,7 @@
   $('#cjSettingsForm').addEventListener('submit',e=>{e.preventDefault();saveCjSettings(e.target)}); $('#testCjButton').addEventListener('click',testCj);
   $$('.connection-form').forEach(form=>form.addEventListener('submit',e=>{e.preventDefault();saveConnection(e.target)}));
   $('#oauthButton').addEventListener('click',connectEbay); $('#refreshOrders').addEventListener('click',loadOrders); $('#refreshDiagnostic').addEventListener('click',()=>safely(fetchJson('/api/ui/system').then(renderSystem),'Diagnostic indisponible'));
+  $('#exportDiagnostic')?.addEventListener('click',()=>safely(exportSafeDiagnostic(),'Export impossible'));
   $('#runAnalysis').addEventListener('click',runAnalysis); $('#readAlerts').addEventListener('click',async()=>{try{const d=await fetchJson('/api/automation/alerts/read',{method:'POST'});toast(d.updated?`${d.updated} alerte${d.updated>1?'s':''} marquée${d.updated>1?'s':''} comme lue${d.updated>1?'s':''}`:'Toutes les alertes sont déjà lues');await loadAutomation()}catch(e){toast('Impossible de mettre à jour les alertes : '+e.message)}});
   $('#runAutoDiscovery').addEventListener('click',runAutoDiscovery);$('#refreshOpportunities').addEventListener('click',()=>safely(loadOpportunities(),'Opportunités indisponibles'));
   document.addEventListener('submit',e=>{if(e.target.id==='addProductForm'){e.preventDefault();submitProduct(e.target)}});

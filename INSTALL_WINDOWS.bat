@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title eBay Ops Bot v0.14.0 - Installation
+title eBay Ops Bot v0.14.1 - Installation
 
 echo ==========================================================
-echo   eBay Ops Bot v0.14.0 - Installation / reparation
+echo   eBay Ops Bot v0.14.1 - Installation / reparation
 echo ==========================================================
 echo.
 

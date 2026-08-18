@@ -121,14 +121,14 @@ def test_v0110_dashboard_is_simplified_and_real_data_only():
     assert "CENTRE DE CONNEXIONS" in response.text
     assert "Product Finder" not in response.text
     assert "résultats simulés" not in response.text
-    assert "v0.14.0" in response.text
+    assert "v0.14.1" in response.text
     assert "BigBuy" not in response.text
     assert "DropXL / vidaXL" in response.text
     assert "HyperSKU" in response.text
     assert "Commandes bloquées" in response.text
     assert 'data-provider="aliexpress"' not in response.text
     sections = re.findall(r'data-section="([^"]+)"', response.text)
-    assert sections == ["overview", "radar", "suppliers", "catalog", "ebay", "support", "finance", "connections", "settings"]
+    assert sections == ["overview", "radar", "suppliers", "catalog", "ebay", "support", "finance", "connections", "help", "settings"]
 
 
 def test_dashboard_has_unique_html_ids():

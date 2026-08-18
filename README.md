@@ -1,6 +1,14 @@
-# eBay Ops Bot v0.14.0
+# eBay Ops Bot v0.14.1
 
-Application cloud et locale pensée pour être utilisée sans connaissances en programmation. La v0.14.0 garde le parcours **détecter une piste → trouver un fournisseur → calculer le coût réel → créer un produit → vendre → suivre le SAV**, avec les mêmes données sur Windows, Mac et iPhone après hébergement.
+Application cloud et locale pensée pour être utilisée sans connaissances en programmation. La v0.14.1 garde le parcours **détecter une piste → trouver un fournisseur → calculer le coût réel → créer un produit → vendre → suivre le SAV**, avec les mêmes données sur Windows, Mac et iPhone après hébergement.
+
+## Nouveautés v0.14.1
+
+- bouton d’export d’un diagnostic texte sécurisé, sans secret ni donnée client ;
+- onglet Aide complet pour présenter le bot à un associé ;
+- parcours guidé des connexions jusqu’au SAV ;
+- explication claire de chaque onglet, des scores et des limites des automatismes ;
+- rappel des actions qui exigent toujours une validation humaine.
 
 ## Nouveautés v0.14.0
 

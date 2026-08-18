@@ -15,7 +15,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.14.0"
+VERSION = "0.14.1"
 
 
 @asynccontextmanager

@@ -1,4 +1,4 @@
-eBay Ops Bot v0.14.0
+eBay Ops Bot v0.14.1
 =====================
 
 WINDOWS :

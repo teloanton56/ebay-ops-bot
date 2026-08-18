@@ -74,3 +74,49 @@ def test_pwa_files_do_not_cache_private_api_or_dashboard():
     assert "url.pathname === '/'" in worker
     assert 'rel="manifest"' in html
     assert 'id="installAppButton"' in html
+
+
+def test_help_page_explains_the_workflow_and_team_safety(monkeypatch):
+    monkeypatch.setenv("APP_ACCESS_MODE", "local")
+    get_settings.cache_clear()
+    html = TestClient(app).get("/").text
+    assert 'data-section="help"' in html
+    assert 'id="section-help"' in html
+    assert "Une opportunité doit franchir six étapes" in html
+    assert "score produit /100" in html
+    assert "un seul compte administrateur" in html
+    assert 'id="exportDiagnostic"' in html
+    get_settings.cache_clear()
+
+
+def test_secure_diagnostic_excludes_credentials_and_private_records(tmp_path, monkeypatch):
+    private_values = {
+        "APP_ADMIN_EMAIL": "owner-private@example.test",
+        "APP_ADMIN_PASSWORD": "SUPER_PRIVATE_PASSWORD_5931",
+        "APP_SESSION_SECRET": "SESSION_PRIVATE_5931" * 3,
+        "APP_ENCRYPTION_KEY": "ENCRYPTION_PRIVATE_5931" * 3,
+        "EBAY_CLIENT_ID": "EBAY_CLIENT_PRIVATE_5931",
+        "EBAY_CLIENT_SECRET": "EBAY_SECRET_PRIVATE_5931",
+        "EBAY_RUNAME": "EBAY_RUNAME_PRIVATE_5931",
+        "YOUTUBE_API_KEY": "YOUTUBE_PRIVATE_5931",
+    }
+    monkeypatch.setenv("APP_ACCESS_MODE", "local")
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "private-cloud.db"))
+    for name, value in private_values.items():
+        monkeypatch.setenv(name, value)
+    get_settings.cache_clear()
+    db.init_db()
+
+    response = TestClient(app).get("/api/ui/diagnostic-export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "attachment" in response.headers["content-disposition"]
+    assert "DIAGNOSTIC SÉCURISÉ" in response.text
+    assert "Version : 0.14.1" in response.text
+    assert "Ce rapport exclut les mots de passe" in response.text
+    assert "Produits : 0" in response.text
+    assert str((tmp_path / "private-cloud.db").resolve()) not in response.text
+    for value in private_values.values():
+        assert value not in response.text
+    get_settings.cache_clear()
