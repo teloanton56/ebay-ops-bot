@@ -203,7 +203,8 @@ def prepare_ebay(product_id: int):
 
 @router.get("/opportunities/inbox")
 def opportunity_inbox():
-    discoveries = list_trend_discoveries(3)
+    discoveries = [row for row in list_trend_discoveries(12)
+                   if row.get("source") == "YOUTUBE_SHORTS_COMMERCE"][:3]
     themes = []
     for discovery in discoveries:
         for theme in discovery["themes"]:

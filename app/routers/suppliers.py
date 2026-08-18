@@ -84,7 +84,8 @@ def factory_discovery(payload: FactoryDiscoveryIn):
     query = payload.query.strip()
     origin = "manual"
     if not query:
-        latest = list_trend_discoveries(1)
+        latest = [row for row in list_trend_discoveries(12)
+                  if row.get("source") == "YOUTUBE_SHORTS_COMMERCE"][:1]
         themes = latest[0]["themes"] if latest else []
         chosen = next((row for row in themes if row.get("product_hint")), themes[0] if themes else None)
         query = str((chosen or {}).get("keyword") or "").strip()

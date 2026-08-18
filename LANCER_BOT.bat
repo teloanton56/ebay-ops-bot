@@ -1,13 +1,13 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title eBay Ops Bot v0.14.2
+title eBay Ops Bot v0.14.3
 
 set "PORT=8765"
 set "URL=http://127.0.0.1:%PORT%"
 
 echo ==========================================================
-echo   eBay Ops Bot v0.14.2
+echo   eBay Ops Bot v0.14.3
 echo ==========================================================
 echo.
 
@@ -27,7 +27,7 @@ if errorlevel 1 (
 rem Si la meme version tourne deja, on ouvre simplement le dashboard.
 set "RUNNING_VERSION="
 for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "try { (Invoke-RestMethod -Uri '%URL%/health' -TimeoutSec 1).version } catch { '' }"`) do set "RUNNING_VERSION=%%V"
-if "%RUNNING_VERSION%"=="0.14.2" (
+if "%RUNNING_VERSION%"=="0.14.3" (
   echo Le bot est deja lance. Ouverture du dashboard...
   start "" "%URL%"
   exit /b 0
@@ -41,7 +41,7 @@ if defined RUNNING_VERSION (
 )
 
 rem Le navigateur attend maintenant que le serveur reponde vraiment.
-start "" /b powershell -NoProfile -WindowStyle Hidden -Command "$u='%URL%/health'; for($i=0;$i -lt 60;$i++){try{$r=Invoke-RestMethod -Uri $u -TimeoutSec 1;if($r.version -eq '0.14.2'){Start-Process '%URL%';exit}}catch{};Start-Sleep -Milliseconds 500}"
+start "" /b powershell -NoProfile -WindowStyle Hidden -Command "$u='%URL%/health'; for($i=0;$i -lt 60;$i++){try{$r=Invoke-RestMethod -Uri $u -TimeoutSec 1;if($r.version -eq '0.14.3'){Start-Process '%URL%';exit}}catch{};Start-Sleep -Milliseconds 500}"
 
 echo Demarrage du serveur local...
 echo Adresse : %URL%

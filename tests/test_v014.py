@@ -116,7 +116,7 @@ def test_secure_diagnostic_excludes_credentials_and_private_records(tmp_path, mo
     assert response.headers["content-type"].startswith("text/plain")
     assert "attachment" in response.headers["content-disposition"]
     assert "DIAGNOSTIC SÉCURISÉ" in response.text
-    assert "Version : 0.14.2" in response.text
+    assert "Version : 0.14.3" in response.text
     assert "Ce rapport exclut les mots de passe" in response.text
     assert "Produits : 0" in response.text
     assert str((tmp_path / "private-cloud.db").resolve()) not in response.text

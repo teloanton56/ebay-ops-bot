@@ -37,10 +37,10 @@ PROVIDERS = {
         "note": "Publicités, annonceurs, durée de diffusion et portée déclarée. Pas de ventes concurrentes.",
     },
     "youtube": {
-        "name": "YouTube Data API", "kind": "Vidéos et intérêt public",
+        "name": "YouTube Shorts e-commerce", "kind": "Produits viraux et intérêt public",
         "required": ("api_key",),
         "docs_url": "https://console.cloud.google.com/apis/library/youtube.googleapis.com",
-        "note": "Vidéos publiques, vues, likes et commentaires selon le quota Google.",
+        "note": "Shorts récents associés à l'e-commerce, au dropshipping et aux produits viraux.",
     },
     "etsy": {
         "name": "Etsy Open API", "kind": "Marketplace",
@@ -110,6 +110,21 @@ TREND_STOPWORDS = {
     "the", "and", "for", "with", "from", "this", "that", "your", "you", "our", "are", "was", "were",
     "official", "video", "music", "clip", "live", "episode", "trailer", "reaction", "shorts", "youtube",
     "nouveau", "nouvelle", "today", "2025", "2026", "feat", "ft", "part", "full", "how", "why", "what",
+    "ecommerce", "commerce", "dropshipping", "dropship", "shopify", "amazon", "tiktok", "viral", "virale",
+    "product", "products", "produit", "produits", "winning", "winner", "gagnant", "gagnants", "find", "finds",
+    "trending", "trend", "tendance", "tendances", "business", "marketing", "seller", "selling", "vente", "store",
+    "boutique", "online", "money", "side", "hustle", "must", "have", "best", "top", "ideas", "idea", "2027",
+    "review", "unboxing", "setup", "things", "stuff", "need", "buy", "acheter", "avis", "test", "testing",
+}
+
+YOUTUBE_COMMERCE_QUERIES = (
+    "#shorts #ecommerce|#shorts #dropshipping|#shorts produit gagnant -formation -coaching -agence -course",
+    "#shorts #amazonfinds|#shorts #tiktokmademebuyit|#shorts #productfinds|#shorts #viralproducts",
+)
+YOUTUBE_COMMERCE_MARKERS = {
+    "ecommerce", "e commerce", "dropshipping", "dropship", "shopify", "amazonfinds", "amazon finds",
+    "tiktokmademebuyit", "tiktok made me buy it", "productfinds", "product finds", "viralproducts",
+    "viral products", "produit gagnant", "produits gagnants", "produit viral", "produits viraux",
 }
 
 PRODUCT_FAMILIES = {
@@ -120,6 +135,9 @@ PRODUCT_FAMILIES = {
     "Sport": {"fitness", "sport", "gym", "running", "cycling", "yoga", "training", "outdoor"},
     "Animaux": {"pet", "pets", "dog", "dogs", "cat", "cats", "chien", "chat", "animal"},
     "Bureau": {"desk", "office", "bureau", "keyboard", "clavier", "mouse", "souris", "stand"},
+    "Cuisine": {"blender", "mixer", "bottle", "bouteille", "cutter", "chopper", "poele", "pan", "dispenser"},
+    "Voyage": {"travel", "voyage", "luggage", "valise", "packing", "portable", "backpack", "sac"},
+    "Jardin": {"garden", "jardin", "plant", "plante", "watering", "arrosage", "outdoor", "terrasse"},
 }
 
 
@@ -127,6 +145,20 @@ def _trend_tokens(value: str) -> list[str]:
     normalized = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().lower()
     return [token for token in re.findall(r"[a-z][a-z0-9-]{2,}", normalized)
             if token not in TREND_STOPWORDS and not token.isdigit()]
+
+
+def _iso_duration_seconds(value: str) -> int:
+    match = re.fullmatch(r"P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", str(value or ""))
+    if not match:
+        return 0
+    days, hours, minutes, seconds = (int(part or 0) for part in match.groups())
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+
+def _commerce_relevant(*values: Any) -> bool:
+    normalized = unicodedata.normalize("NFKD", " ".join(str(value or "") for value in values))
+    normalized = normalized.encode("ascii", "ignore").decode().lower().replace("#", "")
+    return any(marker.replace("#", "") in normalized for marker in YOUTUBE_COMMERCE_MARKERS)
 
 
 def extract_trend_themes(videos: list[dict[str, Any]], limit: int = 12) -> list[dict[str, Any]]:
@@ -355,7 +387,7 @@ class AmazonRadarClient:
         headers = {
             "x-amz-access-token": token,
             "x-amz-date": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
-            "user-agent": "eBayOpsBot/0.14.2 (Language=Python)",
+            "user-agent": "eBayOpsBot/0.14.3 (Language=Python)",
         }
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(market["endpoint"] + path, params=params, headers=headers)
@@ -507,32 +539,62 @@ class YouTubeClient:
         return {"ok": True, "observed": len(payload.get("items") or [])}
 
     async def discover(self, country: str = "FR") -> dict:
-        payload = await self._get("/videos", {"part": "snippet,statistics", "chart": "mostPopular",
-                                               "regionCode": country, "maxResults": 50})
+        since = (datetime.now(timezone.utc) - timedelta(days=21)).isoformat(timespec="seconds").replace("+00:00", "Z")
+        languages = {"FR": "fr", "DE": "de", "IT": "it", "ES": "es", "GB": "en", "US": "en"}
+        search_items = []
+        for query in YOUTUBE_COMMERCE_QUERIES:
+            search = await self._get("/search", {
+                "part": "snippet", "q": query, "type": "video",
+                "videoDuration": "short", "order": "viewCount", "publishedAfter": since,
+                "regionCode": country, "relevanceLanguage": languages.get(country, "en"),
+                "safeSearch": "moderate", "maxResults": 25,
+            })
+            search_items.extend(search.get("items") or [])
+        ids = [str((item.get("id") or {}).get("videoId") or "") for item in search_items]
+        ids = list(dict.fromkeys(video_id for video_id in ids if video_id))[:50]
+        payload = {"items": []}
+        if ids:
+            payload = await self._get("/videos", {
+                "part": "snippet,statistics,contentDetails", "id": ",".join(ids), "maxResults": 50,
+            })
         videos = []
         for item in payload.get("items") or []:
             snippet, stats = item.get("snippet") or {}, item.get("statistics") or {}
+            duration = _iso_duration_seconds((item.get("contentDetails") or {}).get("duration") or "")
+            title = snippet.get("title") or "Vidéo"
+            description = snippet.get("description") or ""
+            tags = [str(tag) for tag in snippet.get("tags") or []]
+            hashtags = list(dict.fromkeys(re.findall(r"#[\w-]{3,}", title + " " + description, flags=re.UNICODE)))
+            if not 0 < duration <= 180 or not _commerce_relevant(title, description, " ".join(tags), " ".join(hashtags)):
+                continue
             thumbs = snippet.get("thumbnails") or {}
             videos.append({
                 "video_id": str(item.get("id") or ""),
-                "title": snippet.get("title") or "Vidéo",
+                "title": title,
                 "channel": snippet.get("channelTitle") or "",
-                "tags": snippet.get("tags") or [],
+                "tags": [*tags, *hashtags],
+                "hashtags": hashtags,
+                "duration_seconds": duration,
                 "views": int(stats.get("viewCount") or 0),
                 "likes": int(stats.get("likeCount") or 0),
+                "comments": int(stats.get("commentCount") or 0),
                 "published_at": snippet.get("publishedAt") or "",
                 "image_url": (thumbs.get("medium") or thumbs.get("default") or {}).get("url") or "",
                 "url": f"https://www.youtube.com/watch?v={item.get('id')}",
             })
+        videos.sort(key=lambda row: row["views"], reverse=True)
         themes = extract_trend_themes(videos)
         scanned_at = datetime.now(timezone.utc).isoformat()
-        discovery_id = save_trend_discovery("YOUTUBE_MOST_POPULAR", country, themes, videos[:20])
+        discovery_id = save_trend_discovery("YOUTUBE_SHORTS_COMMERCE", country, themes, videos[:20])
         return {
-            "id": discovery_id, "source": "YouTube · vidéos populaires", "country": country,
+            "id": discovery_id, "source": "YOUTUBE_SHORTS_COMMERCE",
+            "source_name": "YouTube Shorts · e-commerce", "country": country,
             "scanned_at": scanned_at,
             "observed_count": len(videos), "themes": themes, "items": videos[:8],
+            "searched_count": len(ids),
+            "seed_hashtags": ["#ecommerce", "#dropshipping", "#amazonfinds", "#tiktokmademebuyit", "#productfinds"],
             "measured_only": True,
-            "note": "Les mots récurrents sont extraits des titres et tags publics. Ce signal ne représente ni des recherches, ni des ventes.",
+            "note": "Shorts récents associés à l'e-commerce et aux produits viraux. Les vues Shorts comptent les démarrages et relectures, pas des ventes.",
         }
 
     async def scan(self, keyword: str, region: str = "FR") -> dict:

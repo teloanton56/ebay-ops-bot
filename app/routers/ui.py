@@ -34,7 +34,7 @@ def summary():
     ]
 
     return {
-        "version": "0.14.2",
+        "version": "0.14.3",
         "products": len(products),
         "risk_pass": sum(1 for r in risks if r.get("pass")),
         "risk_block": sum(1 for r in risks if not r.get("pass")),
@@ -62,7 +62,7 @@ def system_status():
     s = get_settings()
     db_path = Path(s.database_path).resolve()
     return {
-        "version": "0.14.2",
+        "version": "0.14.3",
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "database": str(db_path),

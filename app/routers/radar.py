@@ -78,7 +78,8 @@ def radar_history():
 
 @router.get("/discoveries")
 def discoveries():
-    return list_trend_discoveries()
+    return [row for row in list_trend_discoveries(50)
+            if row.get("source") == "YOUTUBE_SHORTS_COMMERCE"][:12]
 
 
 @router.post("/discover")

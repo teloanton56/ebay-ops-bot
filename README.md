@@ -1,6 +1,15 @@
-# eBay Ops Bot v0.14.2
+# eBay Ops Bot v0.14.3
 
-Application cloud et locale pensée pour être utilisée sans connaissances en programmation. La v0.14.2 garde le parcours **détecter une piste → trouver un fournisseur → calculer le coût réel → créer un produit → vendre → suivre le SAV**, avec les mêmes données sur Windows, Mac et iPhone après hébergement.
+Application cloud et locale pensée pour être utilisée sans connaissances en programmation. La v0.14.3 garde le parcours **détecter une piste → trouver un fournisseur → calculer le coût réel → créer un produit → vendre → suivre le SAV**, avec les mêmes données sur Windows, Mac et iPhone après hébergement.
+
+## Nouveautés v0.14.3
+
+- remplacement des tendances YouTube généralistes par des Shorts e-commerce récents ;
+- veille ciblée sur `#ecommerce`, `#dropshipping`, `#amazonfinds`, `#tiktokmademebuyit` et `#productfinds` ;
+- exclusion des vidéos de plus de trois minutes et des résultats sans contexte commercial ;
+- filtrage des mots génériques afin de faire ressortir des types de produits plutôt que « viral » ou « dropshipping » ;
+- affichage des Shorts retenus avec vues, durée et hashtags ;
+- anciens thèmes généralistes exclus de la boîte d'opportunités et des recherches fabricants.
 
 ## Nouveautés v0.14.2
 

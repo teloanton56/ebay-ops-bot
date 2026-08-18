@@ -33,8 +33,8 @@ async def scheduled_sync():
 
 
 async def scheduled_radar():
-    # The YouTube chart costs far less quota than keyword searches and provides
-    # a safe seed for automatic discovery without pretending to know sales.
+    # Two targeted Shorts searches every six hours stay far below YouTube's
+    # default daily search bucket while avoiding irrelevant general charts.
     from app.services.connections import YouTubeClient, connection_status, connection_statuses, scan_connected_sources
     from app.services.radar import analyze_amazon_market
     statuses = connection_statuses()

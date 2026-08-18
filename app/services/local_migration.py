@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 
-CURRENT_VERSION = (0, 14, 2)
+CURRENT_VERSION = (0, 14, 3)
 
 
 def _version(path: Path) -> tuple[int, int, int]:

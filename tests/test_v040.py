@@ -121,7 +121,7 @@ def test_v0110_dashboard_is_simplified_and_real_data_only():
     assert "CENTRE DE CONNEXIONS" in response.text
     assert "Product Finder" not in response.text
     assert "résultats simulés" not in response.text
-    assert "v0.14.2" in response.text
+    assert "v0.14.3" in response.text
     assert "BigBuy" not in response.text
     assert "DropXL / vidaXL" in response.text
     assert "HyperSKU" in response.text
