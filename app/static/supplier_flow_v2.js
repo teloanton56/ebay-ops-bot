@@ -71,11 +71,16 @@
     const shippingLabel = code === 'cj'
       ? 'Transport calculé à l’ajout'
       : (item.shipping_cost == null ? 'Livraison à confirmer' : `Livraison ${money(item.shipping_cost, item.currency || 'EUR')}`);
+    const relevance = Number(item.match_strength);
+    const relevanceLabel = Number.isFinite(relevance) && relevance > 0
+      ? `Pertinence ${Math.round(relevance * 100)}%`
+      : null;
     const meta = [
+      relevanceLabel,
       `Stock ${item.stock ?? '—'}`,
       item.shipping_days == null ? 'Délai —' : `${item.shipping_days} j`,
       shippingLabel,
-    ].map(x => `<span>${esc(x)}</span>`).join('');
+    ].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join('');
     return `<article class="cj-card">${image}<div class="cj-card-body"><h3>${esc(item.name || item.title || 'Produit')}</h3><div class="cj-price">${esc(price)}</div><div class="cj-card-meta">${meta}</div><div class="panel-actions">${addButton(item, provider)}${link}</div></div></article>`;
   }
 
@@ -84,14 +89,18 @@
     const errors = data.errors || [];
     const queried = data.queried || ['CJ', 'Amazon', 'AliExpress'];
     const errorHtml = errors.length
-      ? `<div class="warn-box"><strong>${errors.length} source(s) sans résultat</strong><p>${errors.map(x => `${esc(x.source)} : ${esc(x.message)}`).join('<br>')}</p></div>`
+      ? `<div class="warn-box"><strong>${errors.length} source(s) sans résultat pertinent</strong><p>${errors.map(x => `${esc(x.source)} : ${esc(x.message)}`).join('<br>')}</p></div>`
       : '';
-    const groupHtml = groups.map(group => `
-      <section class="supplier-result-group">
-        <div class="radar-market-head"><strong>${esc(group.source)}</strong><span>${group.products?.length || 0} offre(s)</span></div>
-        <div class="radar-supplier-grid">${(group.products || []).map(item => resultCard(item, group.source)).join('')}</div>
-      </section>`).join('');
-    area.innerHTML = `<div class="info-box"><strong>${queried.length} fournisseur(s) interrogé(s)</strong><p>${esc(data.note || '')}</p></div>${errorHtml}${groupHtml || '<div class="empty-state compact"><strong>Aucune offre trouvée</strong><span>Vérifiez les connexions fournisseurs ou essayez un autre mot-clé.</span></div>'}`;
+    const groupHtml = groups.map(group => {
+      const filtered = Number(group.filtered_out || 0);
+      const countLabel = `${group.products?.length || 0} offre(s) pertinente(s)${filtered > 0 ? ` · ${filtered} hors sujet masqué(s)` : ''}`;
+      return `
+        <section class="supplier-result-group">
+          <div class="radar-market-head"><strong>${esc(group.source)}</strong><span>${esc(countLabel)}</span></div>
+          <div class="radar-supplier-grid">${(group.products || []).map(item => resultCard(item, group.source)).join('')}</div>
+        </section>`;
+    }).join('');
+    area.innerHTML = `<div class="info-box"><strong>${queried.length} fournisseur(s) interrogé(s)</strong><p>${esc(data.note || '')}</p></div>${errorHtml}${groupHtml || '<div class="empty-state compact"><strong>Aucun produit pertinent trouvé</strong><span>Essayez un mot-clé plus précis ou un autre produit.</span></div>'}`;
   }
 
   async function compareSuppliers(form) {
@@ -161,7 +170,7 @@
           const offers = data.offers || [];
           if (!offers.length) {
             area.className = 'supplier-api-results empty-state compact';
-            area.innerHTML = '<strong>Aucun résultat</strong><span>Aucune offre trouvée.</span>';
+            area.innerHTML = '<strong>Aucun résultat pertinent</strong><span>Aucune offre réellement liée à cette recherche.</span>';
             return;
           }
           area.className = 'supplier-api-results cj-product-grid';
