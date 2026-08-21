@@ -31,18 +31,67 @@
     card.appendChild(note);
   }
 
+  function renderAliExpressState(card, connection) {
+    if (!card || !connection) return;
+    const badge = card.querySelector('#connectionStatus-aliexpress');
+    const help = card.querySelector('#connectionHelp-aliexpress');
+    if (badge) {
+      badge.textContent = connection.status || 'À connecter';
+      badge.className = `status-badge ${connection.connected ? 'good' : 'neutral'}`;
+    }
+    if (!help) return;
+
+    const error = connection.last_error ? `<div class="error-box">${connection.last_error}</div>` : '';
+    if (connection.connected) {
+      help.innerHTML = `<span>Connexion OAuth vérifiée. AliExpress est disponible dans le sourcing.</span><div><button class="mini-btn" data-test-connection="aliexpress">Tester</button><button class="mini-btn" data-delete-connection="aliexpress">Oublier la connexion</button></div>`;
+      return;
+    }
+    if (connection.configured && !connection.oauth_authorized) {
+      help.innerHTML = `${error}<span>Clés enregistrées. Il reste à autoriser votre compte AliExpress.</span><div><button class="mini-btn primary" data-authorize-aliexpress>Autoriser AliExpress</button><button class="mini-btn" data-delete-connection="aliexpress">Oublier les clés</button></div>`;
+      return;
+    }
+    if (connection.configured) {
+      help.innerHTML = `${error}<span>Autorisation reçue, mais la connexion Dropshipper doit être retestée.</span><div><button class="mini-btn primary" data-test-connection="aliexpress">Retester</button><button class="mini-btn" data-delete-connection="aliexpress">Oublier la connexion</button></div>`;
+      return;
+    }
+    help.innerHTML = '<span>Étape 1 : enregistrez App Key + App Secret. Étape 2 : autorisez votre compte AliExpress.</span>';
+  }
+
+  async function refreshAliExpressState(card) {
+    try {
+      const response = await fetch('/api/connections');
+      const data = await response.json();
+      if (!response.ok) return;
+      const connection = (data.sources || []).find(row => row.id === 'aliexpress');
+      if (connection) renderAliExpressState(card, connection);
+    } catch (_) {}
+  }
+
+  async function authorizeAliExpress(card) {
+    const help = card?.querySelector('#connectionHelp-aliexpress');
+    try {
+      const response = await fetch('/api/connections/aliexpress/authorize');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || `Erreur ${response.status}`);
+      if (help) help.innerHTML = `<span>Redirection vers AliExpress…</span><small>URL de retour à déclarer dans l'app AliExpress : ${data.redirect_uri || ''}</small>`;
+      window.location.assign(data.authorization_url);
+    } catch (error) {
+      if (help) help.innerHTML = `<div class="error-box">${error.message}</div>`;
+    }
+  }
+
   function bindAliExpressConnection(card) {
     const form = card?.querySelector('.connection-form[data-provider="aliexpress"]');
     if (!form || form.dataset.nativeBound === '1') return;
     form.dataset.nativeBound = '1';
     form.addEventListener('submit', async event => {
       event.preventDefault();
+      event.stopImmediatePropagation();
       const button = form.querySelector('button[type="submit"]');
-      const badge = card.querySelector('#connectionStatus-aliexpress');
       const help = card.querySelector('#connectionHelp-aliexpress');
       const payload = Object.fromEntries(new FormData(form).entries());
       Object.keys(payload).forEach(key => { if (payload[key] === '') delete payload[key]; });
-      if (button) { button.disabled = true; button.textContent = 'Vérification…'; }
+      if (button) { button.disabled = true; button.textContent = 'Enregistrement…'; }
       try {
         const response = await fetch('/api/connections/aliexpress', {
           method: 'POST',
@@ -52,13 +101,12 @@
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Erreur ${response.status}`);
         form.reset();
-        if (badge) { badge.textContent = 'Connecté'; badge.className = 'status-badge good'; }
-        if (help) help.innerHTML = '<span>Connexion fournisseur vérifiée. AliExpress est disponible dans le sourcing.</span><div><button class="mini-btn" data-test-connection="aliexpress">Tester</button><button class="mini-btn" data-delete-connection="aliexpress">Oublier les clés</button></div>';
+        renderAliExpressState(card, data.connection);
       } catch (error) {
-        if (badge) { badge.textContent = 'À tester'; badge.className = 'status-badge neutral'; }
-        if (help) help.textContent = error.message;
+        if (help) help.innerHTML = `<div class="error-box">${error.message}</div>`;
+        await refreshAliExpressState(card);
       } finally {
-        if (button) { button.disabled = false; button.textContent = 'Enregistrer et tester'; }
+        if (button) { button.disabled = false; button.textContent = 'Enregistrer les clés'; }
       }
     });
   }
@@ -96,18 +144,19 @@
       ali.dataset.providerCard = 'aliexpress';
       ali.innerHTML = `
         <div class="panel-head"><div><span class="panel-kicker">FOURNISSEUR API</span><h2>AliExpress</h2></div><span id="connectionStatus-aliexpress" class="status-badge neutral">À connecter</span></div>
-        <p>Catalogue AliExpress utilisé comme source fournisseur pour le sourcing et la comparaison des offres.</p>
+        <p>Connexion en 2 étapes : enregistrez les clés de l'application puis autorisez votre compte AliExpress via OAuth.</p>
         <form class="form-grid connection-form" data-provider="aliexpress">
           <label>App Key<input name="app_key" type="password" autocomplete="new-password"></label>
           <label>App Secret<input name="app_secret" type="password" autocomplete="new-password"></label>
           <label class="full">Tracking ID <span class="seller">(facultatif)</span><input name="tracking_id" autocomplete="off"></label>
-          <div class="full form-actions"><a class="btn btn-ghost" href="https://open.aliexpress.com/" target="_blank" rel="noopener">Configurer l’API ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div>
+          <div class="full form-actions"><a class="btn btn-ghost" href="https://open.aliexpress.com/" target="_blank" rel="noopener">Configurer l’API ↗</a><button class="btn btn-primary" type="submit">Enregistrer les clés</button></div>
         </form>
-        <div id="connectionHelp-aliexpress" class="connection-help">La connexion n’est active qu’après un vrai test API.</div>`;
-      supplierCapabilities(ali, 'SKU · prix · devise · image · boutique/entrepôt · stock/délai si disponibles · analyse de marge.');
+        <div id="connectionHelp-aliexpress" class="connection-help">Étape 1 : enregistrez App Key + App Secret. Étape 2 : autorisez votre compte AliExpress.</div>`;
+      supplierCapabilities(ali, 'OAuth AliExpress · API AE-Dropshipper · SKU · prix · devise · image · stock/délai si disponibles · analyse de marge.');
     }
     placeAfter(ali, cj || amazon || catalogHead);
     bindAliExpressConnection(ali);
+    refreshAliExpressState(ali);
   }
 
   function removeUnwantedSections() {
@@ -234,6 +283,14 @@
     if (text) text.textContent = 'À utiliser seulement si un fournisseur n’est pas disponible via CJ, Amazon ou AliExpress.';
     section.appendChild(manual);
   }
+
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-authorize-aliexpress]');
+    if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    authorizeAliExpress(document.querySelector('.native-aliexpress-card'));
+  }, true);
 
   function run() {
     ensureConnectionSupplierLayout();

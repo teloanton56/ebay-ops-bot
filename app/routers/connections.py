@@ -1,6 +1,7 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.services.connections import (IntegrationError, PROVIDERS, connection_status,
@@ -8,8 +9,10 @@ from app.services.connections import (IntegrationError, PROVIDERS, connection_st
                                       save_credentials, scan_connected_sources,
                                       test_provider)
 from app.services.marketplace_supplier_sources import (
+    aliexpress_authorization_url,
     aliexpress_connection_status,
     delete_aliexpress_credentials,
+    exchange_aliexpress_authorization,
     save_aliexpress_credentials,
     test_aliexpress_connection,
 )
@@ -36,6 +39,10 @@ class SignalScanIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
     sources: list[Literal["tiktok", "youtube", "etsy"]] = Field(min_length=1, max_length=3)
     country: str = Field(default="FR", min_length=2, max_length=2)
+
+
+def _aliexpress_redirect_uri(request: Request) -> str:
+    return str(request.url_for("aliexpress_oauth_callback"))
 
 
 @router.get("")
@@ -66,6 +73,34 @@ async def scan_signals(payload: SignalScanIn):
         raise HTTPException(400, str(exc)) from exc
 
 
+@router.get("/aliexpress/authorize", name="aliexpress_authorize")
+def authorize_aliexpress(request: Request):
+    try:
+        url = aliexpress_authorization_url(_aliexpress_redirect_uri(request))
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"authorization_url": url, "redirect_uri": _aliexpress_redirect_uri(request)}
+
+
+@router.get("/aliexpress/callback", name="aliexpress_oauth_callback")
+async def aliexpress_oauth_callback(request: Request, code: str = "", state: str = "",
+                                     error: str = "", error_description: str = ""):
+    if error:
+        message = error_description or error
+        save_aliexpress_credentials({"last_error": message, "verified_at": ""})
+        return RedirectResponse("/?aliexpress=error#connections", status_code=303)
+    if not code:
+        save_aliexpress_credentials({"last_error": "Code OAuth AliExpress manquant", "verified_at": ""})
+        return RedirectResponse("/?aliexpress=error#connections", status_code=303)
+    try:
+        await exchange_aliexpress_authorization(code, state, _aliexpress_redirect_uri(request))
+        await test_aliexpress_connection()
+    except Exception as exc:
+        save_aliexpress_credentials({"last_error": str(exc), "verified_at": ""})
+        return RedirectResponse("/?aliexpress=error#connections", status_code=303)
+    return RedirectResponse("/?aliexpress=connected#connections", status_code=303)
+
+
 @router.post("/{provider}")
 async def save_connection(provider: str, payload: ConnectionIn):
     values = {key: value for key, value in payload.model_dump().items() if value is not None and str(value).strip()}
@@ -74,15 +109,16 @@ async def save_connection(provider: str, payload: ConnectionIn):
 
     if provider == "aliexpress":
         save_aliexpress_credentials(values)
-        if not aliexpress_connection_status()["configured"]:
+        status = aliexpress_connection_status()
+        if not status["configured"]:
             raise HTTPException(400, "Identifiants AliExpress incomplets")
-        try:
-            tested = await test_aliexpress_connection()
-        except Exception as exc:
-            raise HTTPException(400, f"Identifiants enregistrés, mais test impossible : {exc}") from exc
-        return {"saved": True, "tested": True, "connection": aliexpress_connection_status(),
-                "observed": tested.get("observed", 0),
-                "message": "Connexion fournisseur AliExpress vérifiée."}
+        return {
+            "saved": True,
+            "tested": False,
+            "authorization_required": not status.get("oauth_authorized"),
+            "connection": status,
+            "message": "Clés AliExpress enregistrées. Autorisez maintenant votre compte AliExpress.",
+        }
 
     if provider not in PROVIDERS:
         raise HTTPException(404, "Source inconnue")
@@ -105,6 +141,9 @@ async def save_connection(provider: str, payload: ConnectionIn):
 @router.post("/{provider}/test")
 async def test_connection(provider: str):
     if provider == "aliexpress":
+        status = aliexpress_connection_status()
+        if not status.get("oauth_authorized"):
+            raise HTTPException(400, "Autorisez d'abord votre compte AliExpress avec le bouton Autoriser AliExpress")
         try:
             result = await test_aliexpress_connection()
             return {"tested": True, "connection": aliexpress_connection_status(), **result}
