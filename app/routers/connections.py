@@ -88,17 +88,17 @@ async def aliexpress_oauth_callback(request: Request, code: str = "", state: str
     if error:
         message = error_description or error
         save_aliexpress_credentials({"last_error": message, "verified_at": ""})
-        return RedirectResponse(f"/#connections?aliexpress=error", status_code=303)
+        return RedirectResponse("/?aliexpress=error#connections", status_code=303)
     if not code:
         save_aliexpress_credentials({"last_error": "Code OAuth AliExpress manquant", "verified_at": ""})
-        return RedirectResponse(f"/#connections?aliexpress=error", status_code=303)
+        return RedirectResponse("/?aliexpress=error#connections", status_code=303)
     try:
         await exchange_aliexpress_authorization(code, state, _aliexpress_redirect_uri(request))
         await test_aliexpress_connection()
     except Exception as exc:
         save_aliexpress_credentials({"last_error": str(exc), "verified_at": ""})
-        return RedirectResponse(f"/#connections?aliexpress=error", status_code=303)
-    return RedirectResponse(f"/#connections?aliexpress=connected", status_code=303)
+        return RedirectResponse("/?aliexpress=error#connections", status_code=303)
+    return RedirectResponse("/?aliexpress=connected#connections", status_code=303)
 
 
 @router.post("/{provider}")
