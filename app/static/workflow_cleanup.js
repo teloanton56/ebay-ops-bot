@@ -102,7 +102,12 @@
       if (head.querySelector('p')) head.querySelector('p').textContent = 'Comparez CJ Dropshipping, Amazon et AliExpress. Ajoutez un fournisseur manuel ou un CSV seulement si nécessaire.';
       head.querySelector('[data-action="add-supplier"]')?.remove();
     }
-    section.querySelector('#supplierKpis')?.remove();
+    const supplierKpis = section.querySelector('#supplierKpis');
+    if (supplierKpis) {
+      supplierKpis.hidden = true;
+      supplierKpis.setAttribute('aria-hidden', 'true');
+      supplierKpis.dataset.legacyHidden = '1';
+    }
     const title = section.querySelector('.supplier-match-panel h2');
     const text = section.querySelector('.supplier-match-panel p');
     if (title) title.textContent = 'Comparer CJ, Amazon et AliExpress';
