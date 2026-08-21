@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -9,7 +10,99 @@ from typing import Any
 import httpx
 
 from app.services.connections import AmazonRadarClient, connection_status
+from app.services.crypto import decrypt, encrypt
+from app.services.db import kv_get, kv_set
 from app.services.opportunity_store import _days_from_text, _match_strength, _safe_float
+
+
+ALIEXPRESS_STORAGE_KEY = "integration:aliexpress"
+ALIEXPRESS_REQUIRED = ("app_key", "app_secret")
+
+
+def _aliexpress_env_credentials() -> dict[str, str]:
+    mapping = {
+        "app_key": "ALIEXPRESS_APP_KEY",
+        "app_secret": "ALIEXPRESS_APP_SECRET",
+        "tracking_id": "ALIEXPRESS_TRACKING_ID",
+    }
+    return {field: os.getenv(variable, "").strip() for field, variable in mapping.items()
+            if os.getenv(variable, "").strip()}
+
+
+def load_aliexpress_credentials() -> dict[str, Any]:
+    stored = kv_get(ALIEXPRESS_STORAGE_KEY)
+    if not stored:
+        return _aliexpress_env_credentials()
+    try:
+        data = json.loads(decrypt(stored) or "{}")
+    except (json.JSONDecodeError, RuntimeError) as exc:
+        raise RuntimeError("Les identifiants AliExpress ne peuvent pas être déchiffrés") from exc
+    if data.get("disabled"):
+        return {}
+    return {**_aliexpress_env_credentials(), **data}
+
+
+def save_aliexpress_credentials(values: dict[str, Any]) -> None:
+    allowed = {*ALIEXPRESS_REQUIRED, "tracking_id", "verified_at", "last_error"}
+    try:
+        current = load_aliexpress_credentials()
+    except RuntimeError:
+        current = _aliexpress_env_credentials()
+    current.pop("disabled", None)
+    for key, value in values.items():
+        if key in allowed and value is not None and str(value).strip():
+            current[key] = str(value).strip()
+    kv_set(ALIEXPRESS_STORAGE_KEY, encrypt(json.dumps(current, ensure_ascii=False)) or "")
+
+
+def delete_aliexpress_credentials() -> None:
+    kv_set(ALIEXPRESS_STORAGE_KEY, encrypt('{"disabled": true}') or '{"disabled": true}')
+
+
+def _mask(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) < 9:
+        return "•" * len(value)
+    return value[:4] + "…" + value[-4:]
+
+
+def aliexpress_connection_status() -> dict[str, Any]:
+    recovery_required = False
+    try:
+        data = load_aliexpress_credentials()
+    except RuntimeError:
+        data = {}
+        recovery_required = True
+    configured = all(data.get(field) for field in ALIEXPRESS_REQUIRED)
+    connected = configured and bool(data.get("verified_at")) and not data.get("last_error")
+    return {
+        "id": "aliexpress",
+        "name": "AliExpress",
+        "kind": "Fournisseur marketplace",
+        "configured": configured,
+        "connected": connected,
+        "ready": connected,
+        "status": "Connecté" if connected else "À reconnecter" if recovery_required else "À tester" if configured else "À connecter",
+        "note": "Catalogue fournisseur AliExpress : recherche produit, prix, délai et données logistiques disponibles sont normalisés pour le sourcing.",
+        "docs_url": "https://open.aliexpress.com/",
+        "verified_at": data.get("verified_at"),
+        "last_error": "Identifiants AliExpress incompatibles — reconnectez AliExpress" if recovery_required else data.get("last_error", ""),
+        "credential_masked": _mask(str(data.get("app_key") or "")),
+        "environment": "production",
+        "recovery_required": recovery_required,
+        "supplier": True,
+        "catalog": True,
+        "available_in_products": connected,
+        "capabilities": {
+            "search": True,
+            "price": True,
+            "stock": "when_available",
+            "shipping": "when_available",
+            "variants": "when_available",
+            "margin_analysis": True,
+        },
+    }
 
 
 async def amazon_supplier_offers(keyword: str) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
@@ -61,9 +154,10 @@ class AliExpressSupplierClient:
     endpoint = "https://eco.taobao.com/router/rest"
 
     def __init__(self) -> None:
-        self.app_key = os.getenv("ALIEXPRESS_APP_KEY", "").strip()
-        self.app_secret = os.getenv("ALIEXPRESS_APP_SECRET", "").strip()
-        self.tracking_id = os.getenv("ALIEXPRESS_TRACKING_ID", "").strip()
+        credentials = load_aliexpress_credentials()
+        self.app_key = str(credentials.get("app_key") or "").strip()
+        self.app_secret = str(credentials.get("app_secret") or "").strip()
+        self.tracking_id = str(credentials.get("tracking_id") or "").strip()
 
     @property
     def configured(self) -> bool:
@@ -78,7 +172,7 @@ class AliExpressSupplierClient:
 
     async def search(self, keyword: str, page_size: int = 10) -> dict[str, Any]:
         if not self.configured:
-            raise RuntimeError("ALIEXPRESS_APP_KEY et ALIEXPRESS_APP_SECRET ne sont pas configurés")
+            raise RuntimeError("Clé App et secret AliExpress manquants")
         params: dict[str, Any] = {
             "app_key": self.app_key,
             "format": "json",
@@ -119,11 +213,25 @@ class AliExpressSupplierClient:
         products = (result.get("products") or {}).get("product") or []
         return [row for row in products if isinstance(row, dict)]
 
+    async def test(self) -> dict[str, Any]:
+        payload = await self.search("portable fan", page_size=1)
+        return {"ok": True, "observed": len(self.products(payload)), "marketplace": "AliExpress"}
+
+
+async def test_aliexpress_connection() -> dict[str, Any]:
+    try:
+        result = await AliExpressSupplierClient().test()
+    except Exception as exc:
+        save_aliexpress_credentials({"last_error": str(exc) or "Connexion refusée", "verified_at": "-"})
+        raise
+    save_aliexpress_credentials({"verified_at": datetime.now(timezone.utc).isoformat(), "last_error": ""})
+    return result
+
 
 async def aliexpress_supplier_offers(keyword: str) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    client = AliExpressSupplierClient()
-    if not client.configured:
+    if not aliexpress_connection_status().get("connected"):
         return [], []
+    client = AliExpressSupplierClient()
     try:
         payload = await client.search(keyword, page_size=10)
     except Exception as exc:
@@ -165,16 +273,11 @@ async def aliexpress_supplier_offers(keyword: str) -> tuple[list[dict[str, Any]]
 
 
 def aliexpress_supplier_status() -> dict[str, Any]:
-    client = AliExpressSupplierClient()
+    status = aliexpress_connection_status()
     return {
-        "id": "aliexpress",
+        **status,
         "name": "AliExpress",
-        "kind": "Marketplace fournisseur",
-        "connected": client.configured,
-        "configured": client.configured,
-        "status": "Configuré" if client.configured else "Clés API à ajouter",
-        "catalog": True,
-        "available_in_products": client.configured,
-        "url": "https://open.aliexpress.com/",
-        "note": "Recherche produit AliExpress vers la France. Stock et frais de livraison restent à confirmer avant validation de marge.",
+        "kind": "Fournisseur marketplace",
+        "url": status["docs_url"],
+        "note": "Catalogue AliExpress intégré au sourcing avec le même schéma fournisseur que CJ : SKU, prix, stock/délai/livraison lorsqu'ils sont disponibles et analyse de marge.",
     }
