@@ -9,6 +9,7 @@ from app.services.cj import CJClient, CJError
 from app.services.db import list_suppliers, save_supplier, upsert_product
 from app.services.marketplace_supplier_sources import amazon_supplier_offers
 from app.services.profit import suggest_price
+from app.services.supplier_relevance import rank_supplier_results
 
 router = APIRouter(prefix="/api/supplier-flow", tags=["Supplier Flow"])
 
@@ -27,10 +28,14 @@ class OfferIn(BaseModel):
     cj_pid: str = Field(default="", max_length=120)
 
 
-def _normalized_group(source: str, offers: list[dict]) -> dict:
+def _normalized_group(source: str, offers: list[dict], keyword: str) -> tuple[dict | None, int]:
+    relevant, rejected = rank_supplier_results(keyword, offers, title_keys=("name", "title"), limit=20)
+    if not relevant:
+        return None, rejected
     return {
         "source": source,
-        "total": len(offers),
+        "total": len(relevant),
+        "filtered_out": rejected,
         "products": [
             {
                 "provider": source,
@@ -45,9 +50,18 @@ def _normalized_group(source: str, offers: list[dict]) -> dict:
                 "image_url": row.get("image_url") or "",
                 "source_url": row.get("source_url") or "",
                 "quality_evidence": row.get("evidence") or [],
+                "match_strength": row.get("match_strength"),
             }
-            for row in offers
+            for row in relevant
         ],
+    }, rejected
+
+
+def _no_relevant_message(source: str, keyword: str, raw_count: int) -> dict:
+    suffix = f" ({raw_count} résultat(s) hors sujet ignoré(s))" if raw_count else ""
+    return {
+        "source": source,
+        "message": f"Aucun produit pertinent trouvé pour « {keyword} »{suffix}",
     }
 
 
@@ -56,9 +70,17 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
         client = CJClient()
         if not client.status().get("connected"):
             return None, [{"source": "CJ", "message": "CJ n'est pas connecté"}]
-        result = await client.search_products(keyword=keyword, size=12, min_stock=3)
+
+        # CJ listV2 can return related/recommended products around a query. Pull a wider
+        # candidate set, then keep only titles that genuinely match the user's search.
+        result = await client.search_products(keyword=keyword, size=50, min_stock=3, order_by=0)
+        raw_products = result.get("products") or []
+        relevant, rejected = rank_supplier_results(keyword, raw_products, title_keys=("name",), limit=20)
+        if not relevant:
+            return None, [_no_relevant_message("CJ", keyword, len(raw_products))]
+
         rows = []
-        for product in result.get("products") or []:
+        for product in relevant:
             rows.append({
                 "provider": "CJ",
                 "supplier_sku": product.get("sku") or product.get("cj_pid") or "",
@@ -72,13 +94,20 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
                 "warehouse": product.get("warehouse_country") or "CJ",
                 "image_url": product.get("image_url") or "",
                 "source_url": "",
+                "match_strength": product.get("match_strength"),
                 "quality_evidence": [
+                    f"Pertinence recherche : {float(product.get('match_strength') or 0) * 100:.0f}%",
                     f"Stock observé : {product.get('stock', 0)}",
                     f"Présence CJ : {product.get('listed_num', 0)} listings",
                     "Transport France calculé au moment de l'ajout",
                 ],
             })
-        return {"source": "CJ", "products": rows, "total": len(rows)}, []
+        return {
+            "source": "CJ",
+            "products": rows,
+            "total": len(rows),
+            "filtered_out": rejected,
+        }, []
     except Exception as exc:
         return None, [{"source": "CJ", "message": str(exc)}]
 
@@ -100,12 +129,20 @@ async def compare(q: str = Query(min_length=2, max_length=120)):
 
     amazon_offers, amazon_errors = amazon_result
     if amazon_offers:
-        groups.append(_normalized_group("Amazon", amazon_offers))
+        amazon_group, _ = _normalized_group("Amazon", amazon_offers, keyword)
+        if amazon_group:
+            groups.append(amazon_group)
+        else:
+            errors.append(_no_relevant_message("Amazon", keyword, len(amazon_offers)))
     errors.extend(amazon_errors)
 
     ali_offers, ali_errors = ali_result
     if ali_offers:
-        groups.append(_normalized_group("AliExpress", ali_offers))
+        ali_group, _ = _normalized_group("AliExpress", ali_offers, keyword)
+        if ali_group:
+            groups.append(ali_group)
+        else:
+            errors.append(_no_relevant_message("AliExpress", keyword, len(ali_offers)))
     errors.extend(ali_errors)
 
     return {
@@ -113,7 +150,10 @@ async def compare(q: str = Query(min_length=2, max_length=120)):
         "groups": groups,
         "errors": errors,
         "queried": ["CJ", "Amazon", "AliExpress"],
-        "note": "Comparaison CJ, Amazon et AliExpress. Une source non connectée ou sans résultat est signalée séparément.",
+        "note": (
+            "Comparaison CJ, Amazon et AliExpress. Les résultats hors sujet sont filtrés "
+            "et seuls les produits réellement liés à la recherche sont affichés."
+        ),
     }
 
 

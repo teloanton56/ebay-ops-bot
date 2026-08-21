@@ -11,6 +11,7 @@ from app.services.db import (delete_cj_candidate, get_cj_candidate, list_cj_cand
                              ensure_provider_supplier, save_cj_candidate, save_cj_candidate_analysis,
                              upsert_product)
 from app.services.profit import suggest_price
+from app.services.supplier_relevance import rank_supplier_results
 
 router = APIRouter(prefix="/api/cj", tags=["CJ Dropshipping"])
 
@@ -90,10 +91,46 @@ async def cj_products(q: str = "", page: int = 1, size: int = 20, category_id: s
                       country_code: str = "", min_price: float | None = None, max_price: float | None = None,
                       min_stock: int = 1, order_by: int = 0):
     try:
-        return await CJClient().search_products(keyword=q, page=min(max(page, 1), 1000), size=min(max(size, 1), 50),
-                                                category_id=category_id, country_code=country_code,
-                                                min_price=min_price, max_price=max_price,
-                                                min_stock=max(min_stock, 0), order_by=order_by)
+        requested_size = min(max(size, 1), 50)
+        clean_query = q.strip()
+        search_size = requested_size
+        if clean_query:
+            # Pull a wider candidate pool because CJ may include related-category
+            # recommendations even with best-match sorting.
+            search_size = min(max(requested_size * 3, 50), 100)
+        result = await CJClient().search_products(
+            keyword=clean_query,
+            page=min(max(page, 1), 1000),
+            size=search_size,
+            category_id=category_id,
+            country_code=country_code,
+            min_price=min_price,
+            max_price=max_price,
+            min_stock=max(min_stock, 0),
+            order_by=order_by,
+        )
+        if not clean_query:
+            return result
+
+        raw_products = result.get("products") or []
+        relevant, rejected = rank_supplier_results(
+            clean_query,
+            raw_products,
+            title_keys=("name",),
+            limit=requested_size,
+        )
+        result["raw_total"] = result.get("total")
+        result["products"] = relevant
+        result["total"] = len(relevant)
+        result["total_pages"] = 1
+        result["filtered_out"] = rejected
+        result["relevance_filtered"] = True
+        result["note"] = (
+            f"{rejected} résultat(s) hors sujet ignoré(s)."
+            if rejected
+            else "Résultats triés par pertinence."
+        )
+        return result
     except CJError as exc:
         raise HTTPException(400, str(exc)) from exc
 

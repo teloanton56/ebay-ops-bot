@@ -54,9 +54,9 @@ def test_supplier_ui_explains_shipping_state():
     assert "livraison à confirmer" in source
 
 
-def test_version_and_cache_are_v0217():
+def test_current_version_and_cache_include_landed_cost_ui():
     main = read("app/main.py")
     sw = read("app/static/service-worker.js")
-    assert 'VERSION = "0.21.7"' in main
-    assert "opsbot-v0.21.7-shell" in sw
-    assert "supplier_flow_v2.js?v=0.21.7" in sw
+    assert 'VERSION = "0.21.8"' in main
+    assert "opsbot-v0.21.8-shell" in sw
+    assert "supplier_flow_v2.js?v=0.21.8" in sw
