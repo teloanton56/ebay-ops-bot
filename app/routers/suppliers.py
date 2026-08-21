@@ -65,17 +65,27 @@ def supplier_hub():
             "id": "cj", "name": "CJ Dropshipping", "kind": "Catalogue dropshipping",
             "connected": cj["connected"], "configured": cj["configured"],
             "status": "Connecté" if cj["connected"] else "À reconnecter" if cj.get("recovery_required") else "À connecter",
-            "catalog": True, "available_in_products": cj["connected"], "url": "https://cjdropshipping.com/",
+            "catalog": True, "supplier": True, "available_in_products": cj["connected"], "url": "https://cjdropshipping.com/",
             "note": "Catalogue, stock, variantes et devis transport en lecture seule.",
+            "capabilities": {
+                "search": True, "price": True, "stock": True, "shipping": True,
+                "variants": True, "margin_analysis": True,
+            },
         },
         {
             **amazon,
             "name": "Amazon France",
-            "kind": "Marketplace fournisseur",
+            "kind": "Fournisseur marketplace",
             "catalog": True,
+            "supplier": True,
             "available_in_products": amazon["connected"],
             "url": "https://www.amazon.fr/",
-            "note": "Catalogue et prix Amazon intégrés au sourcing.",
+            "note": "Catalogue et prix Amazon intégrés au sourcing avec le même schéma fournisseur que CJ.",
+            "capabilities": {
+                "search": True, "price": True, "stock": "when_available",
+                "shipping": "when_available", "variants": "when_available",
+                "margin_analysis": True,
+            },
         },
         aliexpress_supplier_status(),
     ]
@@ -104,7 +114,7 @@ async def source_search(provider: str = Query(pattern="^(amazon|aliexpress)$"),
     else:
         offers, errors = await aliexpress_supplier_offers(keyword)
         if not offers and not errors:
-            raise HTTPException(400, "Les clés API AliExpress ne sont pas configurées sur le serveur")
+            raise HTTPException(400, "AliExpress n'est pas connecté dans l'onglet Connexions")
     if not offers and errors:
         raise HTTPException(400, errors[0]["message"])
     return {"provider": provider, "keyword": keyword, "offers": offers, "errors": errors,
