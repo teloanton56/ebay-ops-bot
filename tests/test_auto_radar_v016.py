@@ -161,15 +161,18 @@ def test_opportunity_is_persisted_alerted_once_and_can_be_dismissed(tmp_path, mo
     get_settings.cache_clear()
 
 
-def test_v016_assets_and_routes_are_loaded():
+def test_current_auto_radar_assets_and_routes_are_loaded():
     html = TestClient(app).get("/").text
     worker = Path("app/static/service-worker.js").read_text(encoding="utf-8")
     scheduler = Path("app/services/scheduler.py").read_text(encoding="utf-8")
 
-    assert app.version == "0.16.0"
+    assert app.version == "0.17.0"
     assert "auto_radar.css" in html
     assert "auto_radar.js" in html
-    assert "opsbot-v0.16.0-shell" in worker
+    assert "tiered_radar.css" in html
+    assert "tiered_radar.js" in html
+    assert "opsbot-v0.17.0-shell" in worker
     assert "notificationclick" in worker
     assert "YouTubeClient().discover" not in scheduler
-    assert "run_auto_radar" in scheduler
+    assert "scheduled_radar_quick" in scheduler
+    assert "scheduled_radar_full" in scheduler
