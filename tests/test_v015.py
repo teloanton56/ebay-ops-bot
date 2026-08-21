@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from app.services.product_research import build_product_research_summary
@@ -68,15 +69,17 @@ def test_product_research_penalizes_missing_demand_evidence():
     assert "volume de recherche" in summary["meaning"].lower()
 
 
-def test_v015_assets_are_loaded_and_cache_versioned():
+def test_product_research_assets_follow_current_application_version():
     main = Path("app/main.py").read_text(encoding="utf-8")
     worker = Path("app/static/service-worker.js").read_text(encoding="utf-8")
     script = Path("app/static/product_research.js").read_text(encoding="utf-8")
+    match = re.search(r'^VERSION = "([^"]+)"$', main, re.MULTILINE)
 
-    assert 'VERSION = "0.15.0"' in main
+    assert match is not None
+    version = match.group(1)
     assert "product_research.css" in main
     assert "product_research.js" in main
-    assert "opsbot-v0.15.0-shell" in worker
-    assert "product_research.js?v=0.15.0" in worker
+    assert f"opsbot-v{version}-shell" in worker
+    assert f"product_research.js?v={version}" in worker
     assert "Trouver les fournisseurs" in script
     assert "Volume de recherche exact" in script
