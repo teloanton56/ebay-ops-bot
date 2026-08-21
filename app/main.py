@@ -16,7 +16,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.19.0"
+VERSION = "0.20.0"
 # Compatibility baseline retained: v0.14.3 introduced the simplified real-data dashboard.
 
 
@@ -128,6 +128,7 @@ def dashboard(request: Request):
         (
             "<!-- Compatibility baseline v0.14.3: simplified real-data dashboard -->\n"
             f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
+            f'<script src="/static/workflow_cleanup.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/auto_radar.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/tiered_radar.js?v={VERSION}" defer></script>\n'
