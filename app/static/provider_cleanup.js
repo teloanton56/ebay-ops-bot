@@ -24,6 +24,14 @@
     return false;
   }
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
+  function placeAfter(node, anchor) {
+    if (node && anchor && node.previousElementSibling !== anchor) anchor.insertAdjacentElement('afterend', node);
+  }
+
   function supplierCapabilities(card, text) {
     if (!card || card.querySelector('.supplier-capability-note')) return;
     const note = document.createElement('div');
@@ -42,19 +50,15 @@
     const amazon = section.querySelector('[data-provider-card="amazon"]');
     const cj = section.querySelector('.connection-card-cj');
     if (amazon) {
-      catalogHead.insertAdjacentElement('afterend', amazon);
-      const kicker = amazon.querySelector('.panel-kicker');
-      const paragraph = amazon.querySelector(':scope > p');
-      const policy = amazon.querySelector('.policy-note');
-      if (kicker) kicker.textContent = 'FOURNISSEUR API';
-      if (paragraph) paragraph.textContent = 'Catalogue Amazon France utilisé comme véritable source fournisseur : recherche produit, prix, références et données disponibles alimentent le sourcing.';
-      if (policy) policy.textContent = 'Les données Amazon sont normalisées dans le même schéma fournisseur que CJ. Stock, livraison et coût livré restent validés seulement lorsqu’ils sont réellement disponibles.';
+      placeAfter(amazon, catalogHead);
+      setText(amazon.querySelector('.panel-kicker'), 'FOURNISSEUR API');
+      setText(amazon.querySelector(':scope > p'), 'Catalogue Amazon France utilisé comme véritable source fournisseur : recherche produit, prix, références et données disponibles alimentent le sourcing.');
+      setText(amazon.querySelector('.policy-note'), 'Les données Amazon sont normalisées dans le même schéma fournisseur que CJ. Stock, livraison et coût livré restent validés seulement lorsqu’ils sont réellement disponibles.');
       supplierCapabilities(amazon, 'SKU/ASIN · prix · devise · image · entrepôt · stock si disponible · délai/livraison si disponible · analyse de marge.');
     }
 
     if (cj) {
-      const anchor = amazon || catalogHead;
-      anchor.insertAdjacentElement('afterend', cj);
+      placeAfter(cj, amazon || catalogHead);
       supplierCapabilities(cj, 'SKU · variantes · prix · stock · entrepôt · transport France · délai · coût livré · analyse de marge.');
     }
 
@@ -81,7 +85,7 @@
         <div id="connectionHelp-aliexpress" class="connection-help">La connexion n’est considérée active qu’après un vrai test API.</div>`;
       supplierCapabilities(ali, 'SKU · prix · devise · image · boutique/entrepôt · stock si disponible · délai/livraison si disponible · analyse de marge.');
     }
-    (cj || amazon || catalogHead).insertAdjacentElement('afterend', ali);
+    placeAfter(ali, cj || amazon || catalogHead);
 
     section.querySelectorAll('[data-provider-card="etsy"],[data-provider-card="dropxl"]').forEach(node => node.remove());
   }
