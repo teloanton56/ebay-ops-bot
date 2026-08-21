@@ -3,18 +3,42 @@
 
   const $ = (q, root = document) => root.querySelector(q);
   const $$ = (q, root = document) => [...root.querySelectorAll(q)];
+  const topbarMeta = {
+    overview: ['Accueil', 'Vue synthétique du flux dropshipping eBay.'],
+    radar: ['Radar marché', 'Détecter et valider la demande.'],
+    suppliers: ['Fournisseurs', 'Comparer CJ, Amazon et AliExpress.'],
+    pipeline: ['Pipeline', 'Choisir une offre, contrôler marge et risques.'],
+    catalog: ['Produits', 'Catalogue des produits retenus.'],
+    ebay: ['eBay', 'Annonces et commandes.'],
+    support: ['SAV', 'Suivi client et litiges.'],
+    finance: ['Finance', 'Marge, chiffre d’affaires et résultats.'],
+    connections: ['Connexions', 'eBay, CJ, Amazon, AliExpress et signaux marché.'],
+    settings: ['Paramètres', 'Règles de marge, sécurité et diagnostic.'],
+    help: ['Aide', 'Documentation du bot.'],
+  };
+
+  function currentSection() {
+    const active = $('.nav-item.active[data-section]');
+    return active?.dataset.section || location.hash.replace('#', '') || 'overview';
+  }
+
+  function syncTopbar(section = currentSection()) {
+    const meta = topbarMeta[section];
+    if (!meta) return;
+    const title = $('#pageTitle');
+    const subtitle = $('#pageSubtitle');
+    if (title) title.textContent = meta[0];
+    if (subtitle) subtitle.textContent = meta[1];
+  }
 
   function removeOverviewNoise() {
     const overview = $('#section-overview');
     if (!overview) return;
-
     $$('.two-col > .panel', overview).forEach(panel => {
       const text = (panel.textContent || '').toLowerCase();
       if (text.includes('checklist de lancement') || text.includes('que voulez-vous faire')) panel.remove();
     });
-    $$('.two-col', overview).forEach(row => {
-      if (!row.children.length) row.remove();
-    });
+    $$('.two-col', overview).forEach(row => { if (!row.children.length) row.remove(); });
 
     const hero = overview.querySelector('.hero');
     if (hero) {
@@ -54,20 +78,7 @@
       const item = nav.querySelector(`[data-section="${id}"]`);
       if (item) nav.appendChild(item);
     });
-
-    const labels = {
-      overview: 'Accueil',
-      radar: 'Radar marché',
-      suppliers: 'Fournisseurs',
-      pipeline: 'Pipeline',
-      catalog: 'Produits',
-      ebay: 'eBay',
-      support: 'SAV',
-      finance: 'Finance',
-      connections: 'Connexions',
-      settings: 'Paramètres',
-      help: 'Aide',
-    };
+    const labels = {overview:'Accueil',radar:'Radar marché',suppliers:'Fournisseurs',pipeline:'Pipeline',catalog:'Produits',ebay:'eBay',support:'SAV',finance:'Finance',connections:'Connexions',settings:'Paramètres',help:'Aide'};
     Object.entries(labels).forEach(([id, label]) => {
       const item = nav.querySelector(`[data-section="${id}"]`);
       const spans = item ? item.querySelectorAll('span') : [];
@@ -85,15 +96,12 @@
       if (h1) h1.textContent = 'Radar marché';
       if (p) p.textContent = 'Détectez une piste, confirmez la demande sur eBay et utilisez Amazon comme signal complémentaire. Le sourcing se fait ensuite dans Fournisseurs.';
     }
-
     section.querySelector('input[name="radar_source"][value="etsy"]')?.closest('label')?.remove();
     const legend = section.querySelector('.radar-signal-panel legend');
     if (legend) legend.textContent = 'Sources de tendance connectées';
     const signalHead = section.querySelector('.radar-signal-panel h2');
     if (signalHead) signalHead.textContent = 'Confirmer une piste sur les signaux disponibles';
-    const signalHelp = section.querySelector('.radar-signal-panel .help-tip');
-    signalHelp?.remove();
-
+    section.querySelector('.radar-signal-panel .help-tip')?.remove();
     const amazonLegend = section.querySelector('.amazon-markets legend');
     if (amazonLegend) amazonLegend.childNodes[0].textContent = 'Amazon — signal marché complémentaire ';
   }
@@ -111,9 +119,9 @@
       if (p) p.textContent = 'Recherchez et comparez uniquement CJ Dropshipping, Amazon et AliExpress.';
       head.querySelector('[data-action="add-supplier"]')?.remove();
     }
-
     section.querySelector('#supplierKpis')?.remove();
-    section.querySelector('.supplier-match-panel .panel-kicker') && (section.querySelector('.supplier-match-panel .panel-kicker').textContent = 'COMPARATEUR GLOBAL');
+    const kicker = section.querySelector('.supplier-match-panel .panel-kicker');
+    if (kicker) kicker.textContent = 'COMPARATEUR GLOBAL';
     const matchTitle = section.querySelector('.supplier-match-panel h2');
     const matchText = section.querySelector('.supplier-match-panel p');
     if (matchTitle) matchTitle.textContent = 'Comparer CJ, Amazon et AliExpress';
@@ -170,7 +178,14 @@
     cleanProducts();
     cleanEbay();
     cleanConnections();
+    syncTopbar();
   }
+
+  document.addEventListener('click', event => {
+    const target = event.target.closest('[data-section],[data-go]');
+    const section = target?.dataset.section || target?.dataset.go;
+    if (section && topbarMeta[section]) setTimeout(() => syncTopbar(section), 0);
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply, {once: true});
   else apply();
