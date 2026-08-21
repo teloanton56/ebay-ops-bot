@@ -213,7 +213,8 @@ async def compare_shop_listing(title: str, competitor_price: float, *, limit: in
                 )
                 for product in relevant[:4]
             ]
-            for candidate, error in await asyncio.gather(*jobs) if jobs else []:
+            results = await asyncio.gather(*jobs) if jobs else []
+            for candidate, error in results:
                 if candidate:
                     candidate["reference_source"] = "PRIX_BOUTIQUE_EBAY"
                     candidates.append(candidate)
