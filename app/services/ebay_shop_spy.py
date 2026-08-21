@@ -6,10 +6,11 @@ from statistics import median
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+import httpx
+
 from app.config import get_settings
 from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier_offers
 from app.services.cj import CJClient
-from app.services.ebay import EbayClient, EbayError
 from app.services.margin_hunter import _ali_candidates, _deep_cj_candidate
 from app.services.supplier_relevance import rank_supplier_results
 
@@ -17,6 +18,7 @@ from app.services.supplier_relevance import rank_supplier_results
 SELLER_RE = re.compile(r"^[A-Za-z0-9_.-]{2,80}$")
 MAX_SHOP_ITEMS = 100
 MAX_SUPPLIER_RESULTS = 8
+FINDING_ENDPOINT = "https://svcs.ebay.com/services/search/FindingService/v1"
 
 
 def extract_seller_username(value: str) -> str:
@@ -52,6 +54,12 @@ def extract_seller_username(value: str) -> str:
     return candidate
 
 
+def _first(value: Any, default: Any = None) -> Any:
+    if isinstance(value, list):
+        return value[0] if value else default
+    return default if value is None else value
+
+
 def _float(value: Any) -> float | None:
     try:
         return float(value)
@@ -59,99 +67,145 @@ def _float(value: Any) -> float | None:
         return None
 
 
-def _shipping_cost(item: dict[str, Any]) -> tuple[float | None, str]:
-    rows = item.get("shippingOptions") or []
-    costs: list[tuple[float, str]] = []
-    for row in rows:
-        price = row.get("shippingCost") or {}
-        value = _float(price.get("value"))
-        if value is None:
-            continue
-        costs.append((value, str(price.get("currency") or "EUR")))
-    if not costs:
+def _int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _finding_money(value: Any) -> tuple[float | None, str]:
+    block = _first(value, {})
+    if not isinstance(block, dict):
         return None, "EUR"
-    return min(costs, key=lambda entry: entry[0])
+    return _float(block.get("__value__")), str(block.get("@currencyId") or "EUR")
 
 
-def _normalize_listing(item: dict[str, Any], rank: int) -> dict[str, Any] | None:
-    price_block = item.get("price") or {}
-    price = _float(price_block.get("value"))
+def _normalize_finding_listing(item: dict[str, Any], rank: int) -> dict[str, Any] | None:
+    selling = _first(item.get("sellingStatus"), {})
+    shipping_info = _first(item.get("shippingInfo"), {})
+    seller_info = _first(item.get("sellerInfo"), {})
+    condition = _first(item.get("condition"), {})
+    listing_info = _first(item.get("listingInfo"), {})
+
+    if not isinstance(selling, dict):
+        selling = {}
+    if not isinstance(shipping_info, dict):
+        shipping_info = {}
+    if not isinstance(seller_info, dict):
+        seller_info = {}
+    if not isinstance(condition, dict):
+        condition = {}
+    if not isinstance(listing_info, dict):
+        listing_info = {}
+
+    price, currency = _finding_money(selling.get("currentPrice"))
     if price is None:
         return None
-    shipping, shipping_currency = _shipping_cost(item)
-    currency = str(price_block.get("currency") or shipping_currency or "EUR")
-    seller = item.get("seller") or {}
-    image = item.get("image") or {}
-    location = item.get("itemLocation") or {}
-    watch_count = item.get("watchCount")
-    try:
-        watch_count = int(watch_count) if watch_count is not None else None
-    except (TypeError, ValueError):
-        watch_count = None
+    shipping, shipping_currency = _finding_money(shipping_info.get("shippingServiceCost"))
+    currency = currency or shipping_currency or "EUR"
+    item_id = str(_first(item.get("itemId"), ""))
     total_price = round(price + (shipping or 0.0), 2)
+
     return {
         "rank": rank,
-        "item_id": str(item.get("itemId") or ""),
-        "legacy_item_id": str(item.get("legacyItemId") or ""),
-        "title": str(item.get("title") or "Produit eBay"),
+        "item_id": item_id,
+        "legacy_item_id": item_id,
+        "title": str(_first(item.get("title"), "Produit eBay")),
         "price": round(price, 2),
         "shipping_cost": round(shipping, 2) if shipping is not None else None,
         "buyer_total": total_price,
         "currency": currency,
-        "condition": str(item.get("condition") or ""),
-        "image_url": str(image.get("imageUrl") or ""),
-        "item_url": str(item.get("itemWebUrl") or ""),
-        "watch_count": watch_count,
-        "seller_username": str(seller.get("username") or ""),
-        "seller_feedback_score": seller.get("feedbackScore"),
-        "seller_feedback_percent": seller.get("feedbackPercentage"),
-        "seller_account_type": seller.get("sellerAccountType"),
-        "location_country": str(location.get("country") or ""),
-        "location_city": str(location.get("city") or ""),
-        "item_creation_date": item.get("itemCreationDate"),
+        "condition": str(_first(condition.get("conditionDisplayName"), "")),
+        "image_url": str(_first(item.get("galleryURL"), "")),
+        "item_url": str(_first(item.get("viewItemURL"), "")),
+        "watch_count": None,
+        "seller_username": str(_first(seller_info.get("sellerUserName"), "")),
+        "seller_feedback_score": _int(_first(seller_info.get("feedbackScore"))),
+        "seller_feedback_percent": _float(_first(seller_info.get("positiveFeedbackPercent"))),
+        "seller_account_type": "",
+        "location_country": str(_first(item.get("country"), "")),
+        "location_city": str(_first(item.get("location"), "")),
+        "item_creation_date": _first(listing_info.get("startTime")),
     }
+
+
+def _finding_error_message(response: dict[str, Any]) -> str | None:
+    error_group = _first(response.get("errorMessage"), {})
+    if not isinstance(error_group, dict):
+        return None
+    error = _first(error_group.get("error"), {})
+    if not isinstance(error, dict):
+        return None
+    message = _first(error.get("message"))
+    return str(message) if message else None
+
+
+async def _find_seller_items(seller: str, limit: int, app_id: str) -> dict[str, Any]:
+    params = {
+        "OPERATION-NAME": "findItemsAdvanced",
+        "SERVICE-VERSION": "1.13.0",
+        "SECURITY-APPNAME": app_id,
+        "RESPONSE-DATA-FORMAT": "JSON",
+        "REST-PAYLOAD": "true",
+        "GLOBAL-ID": "EBAY-FR",
+        "outputSelector": "SellerInfo",
+        "itemFilter(0).name": "Seller",
+        "itemFilter(0).value(0)": seller,
+        "itemFilter(1).name": "LocatedIn",
+        "itemFilter(1).value(0)": "WorldWide",
+        "paginationInput.entriesPerPage": str(limit),
+        "paginationInput.pageNumber": "1",
+        "sortOrder": "BestMatch",
+    }
+    async with httpx.AsyncClient(timeout=45) as client:
+        response = await client.get(FINDING_ENDPOINT, params=params)
+    if response.is_error:
+        raise ValueError(f"eBay Finding a répondu HTTP {response.status_code}")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError("Réponse eBay Finding invalide") from exc
+
+    root = _first(payload.get("findItemsAdvancedResponse"), {})
+    if not isinstance(root, dict):
+        raise ValueError("Réponse eBay Finding incomplète")
+    ack = str(_first(root.get("ack"), "")).upper()
+    if ack not in {"SUCCESS", "WARNING"}:
+        raise ValueError(_finding_error_message(root) or f"Impossible de lire la boutique eBay « {seller} »")
+    return root
 
 
 async def analyze_ebay_shop(value: str, *, limit: int = 50) -> dict[str, Any]:
     settings = get_settings()
-    if settings.ebay_effective_env != "production" or not settings.ebay_client_id or not settings.ebay_client_secret:
+    if settings.ebay_effective_env != "production" or not settings.ebay_client_id:
         raise ValueError("Spy eBay Shop nécessite les clés eBay Production pour lire les annonces réelles.")
 
     seller = extract_seller_username(value)
     limit = min(max(int(limit), 1), MAX_SHOP_ITEMS)
-    client = EbayClient()
-    params = {
-        "filter": f"sellers:{{{seller}}},deliveryCountry:FR",
-        "limit": limit,
-        "fieldgroups": "EXTENDED",
-    }
-    try:
-        payload = await client.public_request(
-            "GET",
-            "/buy/browse/v1/item_summary/search",
-            params=params,
-            marketplace_id="EBAY_FR",
-        )
-    except EbayError as exc:
-        detail = exc.payload if isinstance(exc.payload, dict) else {}
-        errors = detail.get("errors") or []
-        message = errors[0].get("message") if errors and isinstance(errors[0], dict) else None
-        raise ValueError(message or f"Impossible de lire la boutique eBay « {seller} »") from exc
+    root = await _find_seller_items(seller, limit, settings.ebay_client_id)
 
-    raw_items = payload.get("itemSummaries") or []
+    search_result = _first(root.get("searchResult"), {})
+    if not isinstance(search_result, dict):
+        search_result = {}
+    raw_items = search_result.get("item") or []
     listings = []
     for index, item in enumerate(raw_items, start=1):
         if not isinstance(item, dict):
             continue
-        row = _normalize_listing(item, index)
+        row = _normalize_finding_listing(item, index)
         if row:
             listings.append(row)
+
+    pagination = _first(root.get("paginationOutput"), {})
+    if not isinstance(pagination, dict):
+        pagination = {}
+    total_entries = _int(_first(pagination.get("totalEntries")))
 
     first_seller = next((row for row in listings if row.get("seller_username")), None)
     resolved_seller = str((first_seller or {}).get("seller_username") or seller)
     prices = [float(row["price"]) for row in listings if row.get("price") is not None]
     buyer_totals = [float(row["buyer_total"]) for row in listings if row.get("buyer_total") is not None]
-    watchers_available = any(row.get("watch_count") is not None for row in listings)
 
     return {
         "seller": {
@@ -161,19 +215,19 @@ async def analyze_ebay_shop(value: str, *, limit: int = 50) -> dict[str, Any]:
             "feedback_percent": (first_seller or {}).get("seller_feedback_percent"),
             "account_type": (first_seller or {}).get("seller_account_type"),
         },
-        "active_listings_total": int(payload.get("total") or len(listings)),
+        "active_listings_total": total_entries if total_entries is not None else len(listings),
         "sample_size": len(listings),
         "median_price": round(median(prices), 2) if prices else None,
         "min_price": round(min(prices), 2) if prices else None,
         "max_price": round(max(prices), 2) if prices else None,
         "sample_inventory_value": round(sum(buyer_totals), 2) if buyer_totals else 0.0,
         "currency": listings[0].get("currency") if listings else "EUR",
-        "watchers_available": watchers_available,
-        "ranking_basis": "WATCHERS_WHEN_AVAILABLE_AND_EBAY_ORDER" if watchers_available else "EBAY_BEST_MATCH_ORDER",
+        "watchers_available": False,
+        "ranking_basis": "EBAY_FINDING_BEST_MATCH",
         "listings": listings,
         "note": (
-            "Les annonces sont celles renvoyées par l'API Browse eBay pour ce vendeur. "
-            "Le volume de ventes par annonce n'est pas exposé par ce flux. Le nombre de watchers n'est affiché que si eBay l'autorise pour l'application. "
+            "Les annonces actives sont récupérées avec eBay Finding findItemsAdvanced et le filtre Seller, sans faux mot-clé. "
+            "Le volume de ventes par annonce et le nombre de watchers ne sont pas exposés par ce flux. "
             "La valeur d'inventaire affichée correspond uniquement à l'échantillon d'annonces actives, pas au chiffre d'affaires."
         ),
     }
