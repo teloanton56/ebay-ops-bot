@@ -184,8 +184,11 @@ def price_suggestion(product_id: int):
     product = get_product(product_id)
     if not product:
         raise HTTPException(404, "Product not found")
+    shipping_days = int(product.get("shipping_days") or 0)
+    if shipping_days <= 0 or shipping_days >= 99:
+        raise HTTPException(400, "Impossible de calculer un prix fiable tant que la livraison n'est pas confirmée.")
     result = suggest_price(product)
-    set_product_fields(product_id, suggested_price=result["suggested_price"])
+    set_product_fields(product_id, suggested_price=result["suggested_price"], target_price=result["suggested_price"])
     return result
 
 
