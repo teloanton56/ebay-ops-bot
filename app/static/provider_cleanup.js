@@ -15,6 +15,13 @@
     root.querySelectorAll?.(namedCardSelector).forEach(node => { if (hasRemovedName(node)) node.remove(); });
   }
 
+  function hideLegacyPanel(node) {
+    if (!node) return;
+    node.hidden = true;
+    node.setAttribute('aria-hidden', 'true');
+    node.dataset.legacyHidden = '1';
+  }
+
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
   }
@@ -174,15 +181,17 @@
       }
     });
 
-    document.querySelector('#section-ebay .sales-channel-panel')?.remove();
-    document.querySelector('#section-suppliers .supplier-network')?.remove();
-    document.querySelector('#section-suppliers .niche-directory-panel')?.remove();
-    document.querySelector('#section-suppliers .factory-discovery-panel')?.remove();
-    document.querySelector('#section-suppliers .radar-factory-grid')?.remove();
+    // These legacy panels are still referenced by app.js refresh functions.
+    // Hide them instead of removing them so background refreshes never dereference null.
+    hideLegacyPanel(document.querySelector('#section-ebay .sales-channel-panel'));
+    hideLegacyPanel(document.querySelector('#section-suppliers .supplier-network'));
+    hideLegacyPanel(document.querySelector('#section-suppliers .niche-directory-panel'));
+    hideLegacyPanel(document.querySelector('#section-suppliers .factory-discovery-panel'));
+    hideLegacyPanel(document.querySelector('#section-suppliers .radar-factory-grid'));
     document.querySelectorAll('#section-suppliers .subsection-head').forEach(head => {
-      if ((head.textContent || '').toLowerCase().includes('sourcing direct')) head.remove();
+      if ((head.textContent || '').toLowerCase().includes('sourcing direct')) hideLegacyPanel(head);
     });
-    document.querySelector('#section-radar #radarSources')?.closest('.panel')?.remove();
+    hideLegacyPanel(document.querySelector('#section-radar #radarSources')?.closest('.panel'));
 
     document.querySelector('[data-section="pipeline"]')?.remove();
     document.querySelector('#section-pipeline')?.remove();
