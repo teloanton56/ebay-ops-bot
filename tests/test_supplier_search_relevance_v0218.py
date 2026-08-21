@@ -127,7 +127,7 @@ def test_supplier_relevance_ui_stays_registered_on_current_version():
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     worker = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
     ui = (ROOT / "app/static/supplier_flow_v2.js").read_text(encoding="utf-8")
-    assert 'VERSION = "0.21.10"' in main
-    assert "opsbot-v0.21.10-shell" in worker
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
+    assert f"opsbot-v{version}-shell" in worker
     assert "Pertinence ${Math.round(relevance * 100)}%" in ui
     assert "hors sujet masqué(s)" in ui
