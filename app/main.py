@@ -16,7 +16,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.20.0"
+VERSION = "0.21.0"
 # Compatibility baseline retained: v0.14.3 introduced the simplified real-data dashboard.
 
 
@@ -30,8 +30,6 @@ async def lifespan(_: FastAPI):
     finally:
         stop_scheduler()
 
-# Swagger/Redoc are intentionally hidden from the normal app to avoid sending non-technical users
-# into raw API screens. The API remains available to the frontend.
 app = FastAPI(title="eBay Ops Bot", version=VERSION, docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts(get_settings()))
 app.include_router(ebay_compliance.router)
@@ -119,7 +117,6 @@ def dashboard(request: Request):
             f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n'
             f'<link rel="stylesheet" href="/static/auto_radar.css?v={VERSION}">\n'
             f'<link rel="stylesheet" href="/static/tiered_radar.css?v={VERSION}">\n'
-            f'<link rel="stylesheet" href="/static/opportunity_center.css?v={VERSION}">\n'
             "</head>"
         ),
     )
@@ -132,7 +129,6 @@ def dashboard(request: Request):
             f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/auto_radar.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/tiered_radar.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/opportunity_center.js?v={VERSION}" defer></script>\n'
             "</body>"
         ),
     )
