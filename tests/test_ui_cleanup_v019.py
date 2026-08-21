@@ -20,7 +20,7 @@ def test_supplier_source_search_supports_amazon_and_aliexpress():
     router = Path("app/routers/suppliers.py").read_text(encoding="utf-8")
     assert '@router.get("/source-search")' in router
     assert "amazon_supplier_offers" in router
-    assert "aliexpress_supplier_offers" in router
+    assert "aliexpress_dropship_supplier_offers" in router
     assert 'provider == "amazon"' in router
 
 

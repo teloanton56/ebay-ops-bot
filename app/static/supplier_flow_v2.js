@@ -3,6 +3,7 @@
 
   const offerStore = new Map();
   let counter = 0;
+  let catalogObserver = null;
 
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -27,15 +28,21 @@
     return `${amount.toFixed(2)} ${currency || 'EUR'}`;
   }
 
+  function providerCode(provider) {
+    return String(provider || '').trim().toLowerCase();
+  }
+
   function rememberOffer(item, provider) {
     const id = `flow-${++counter}`;
+    const code = providerCode(provider || item.provider);
     offerStore.set(id, {
-      provider: String(provider || item.provider || '').toLowerCase(),
+      provider: code,
       supplier_sku: String(item.supplier_sku || item.sku || item.cj_pid || ''),
+      cj_pid: String(item.cj_pid || ''),
       name: item.name || item.title || 'Produit',
       price: Number(item.price ?? item.product_cost ?? item.price_usd ?? 0),
       shipping_cost: item.shipping_cost == null ? null : Number(item.shipping_cost),
-      currency: item.currency || (String(provider).toLowerCase() === 'cj' ? 'USD' : 'EUR'),
+      currency: item.currency || (code === 'cj' ? 'USD' : 'EUR'),
       stock: item.stock == null ? null : Number(item.stock),
       shipping_days: item.shipping_days == null ? null : Number(item.shipping_days),
       image_url: item.image_url || '',
@@ -50,18 +57,24 @@
     if (price === null || price === undefined || !sku) {
       return '<span class="candidate-pending">Prix ou SKU à vérifier avant ajout</span>';
     }
+    const code = providerCode(provider || item.provider);
     const id = rememberOffer(item, provider);
-    return `<button class="mini-btn primary" data-flow-add="${id}">Ajouter aux Produits</button>`;
+    const label = code === 'cj' ? 'Calculer livraison & ajouter' : 'Ajouter aux Produits';
+    return `<button class="mini-btn primary" data-flow-add="${id}" data-flow-provider="${esc(code)}">${label}</button>`;
   }
 
   function resultCard(item, provider) {
+    const code = providerCode(provider || item.provider);
     const image = item.image_url ? `<img src="${esc(item.image_url)}" alt="" loading="lazy">` : '<div class="image-placeholder">API</div>';
     const link = item.source_url ? `<a class="mini-btn" href="${esc(item.source_url)}" target="_blank" rel="noopener">Voir le produit ↗</a>` : '';
-    const price = money(item.price ?? item.product_cost ?? item.price_usd, item.currency || (String(provider).toLowerCase() === 'cj' ? 'USD' : 'EUR'));
+    const price = money(item.price ?? item.product_cost ?? item.price_usd, item.currency || (code === 'cj' ? 'USD' : 'EUR'));
+    const shippingLabel = code === 'cj'
+      ? 'Transport calculé à l’ajout'
+      : (item.shipping_cost == null ? 'Livraison à confirmer' : `Livraison ${money(item.shipping_cost, item.currency || 'EUR')}`);
     const meta = [
       `Stock ${item.stock ?? '—'}`,
       item.shipping_days == null ? 'Délai —' : `${item.shipping_days} j`,
-      item.warehouse || 'Entrepôt inconnu',
+      shippingLabel,
     ].map(x => `<span>${esc(x)}</span>`).join('');
     return `<article class="cj-card">${image}<div class="cj-card-body"><h3>${esc(item.name || item.title || 'Produit')}</h3><div class="cj-price">${esc(price)}</div><div class="cj-card-meta">${meta}</div><div class="panel-actions">${addButton(item, provider)}${link}</div></div></article>`;
   }
@@ -103,7 +116,7 @@
     if (!offer) return;
     const previous = button.textContent;
     button.disabled = true;
-    button.textContent = 'Ajout…';
+    button.textContent = offer.provider === 'cj' ? 'Calcul transport…' : 'Ajout…';
     try {
       const response = await fetch('/api/supplier-flow/add', {
         method: 'POST',
@@ -114,8 +127,11 @@
       if (!response.ok) throw new Error(data.detail || `Erreur ${response.status}`);
       button.textContent = 'Ajouté ✓';
       button.classList.remove('primary');
-      button.title = `Produit #${data.product_id} ajouté au dashboard Produits`;
+      button.title = data.message || `Produit #${data.product_id} ajouté au dashboard Produits`;
       ensureLegacyCompatibility();
+      if (!data.pricing_ready) {
+        alert(data.message || 'Produit ajouté, mais la livraison et le prix conseillé restent à confirmer.');
+      }
     } catch (error) {
       button.disabled = false;
       button.textContent = previous;
@@ -158,6 +174,39 @@
     });
   }
 
+  function normalizeProductCatalogPresentation() {
+    const body = document.querySelector('#productTableBody');
+    if (!body) return;
+    body.querySelectorAll('tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length < 6) return;
+      const supplierCell = cells[1];
+      const priceCell = cells[2];
+      const providerText = (supplierCell.textContent || '').toLowerCase();
+      const managedSupplier = providerText.includes('cj dropshipping') || providerText.includes('aliexpress') || providerText.includes('amazon france');
+      const priceStrong = priceCell.querySelector('strong');
+      const targetHint = priceCell.querySelector('.seller');
+      const targetMissing = (priceStrong?.textContent || '').trim() === '—' || (targetHint?.textContent || '').includes('Cible —');
+      if (!targetMissing) return;
+
+      if (priceStrong && priceStrong.textContent !== 'À calculer') priceStrong.textContent = 'À calculer';
+      const supplierMeta = supplierCell.querySelector('.seller');
+      if (managedSupplier && supplierMeta && !supplierMeta.textContent.includes('livraison à confirmer')) {
+        const parts = supplierMeta.textContent.split('+');
+        if (parts.length >= 2) supplierMeta.textContent = `${parts[0].trim()} + livraison à confirmer`;
+      }
+    });
+  }
+
+  function watchProductCatalog() {
+    const body = document.querySelector('#productTableBody');
+    if (!body) return;
+    normalizeProductCatalogPresentation();
+    if (catalogObserver) catalogObserver.disconnect();
+    catalogObserver = new MutationObserver(() => normalizeProductCatalogPresentation());
+    catalogObserver.observe(body, {childList: true, subtree: true});
+  }
+
   document.addEventListener('submit', event => {
     const form = event.target.closest('#supplierMatchForm');
     if (!form) return;
@@ -177,6 +226,7 @@
   const run = () => {
     ensureLegacyCompatibility();
     enhanceCatalogResults();
+    watchProductCatalog();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once: true});
   else run();

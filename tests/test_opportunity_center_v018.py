@@ -176,14 +176,12 @@ def test_backup_integrity_and_global_readiness_remain_dry_run(tmp_path, monkeypa
     assert next(row for row in readiness["checks"] if row["id"] == "dry_run")["done"] is True
 
 
-def test_v018_assets_routes_and_monitor_job_are_registered():
+def test_opportunity_center_backend_remains_available_but_frontend_is_not_loaded():
     main = Path("app/main.py").read_text(encoding="utf-8")
-    worker = Path("app/static/service-worker.js").read_text(encoding="utf-8")
     scheduler = Path("app/services/scheduler.py").read_text(encoding="utf-8")
     router = Path("app/routers/opportunity_center.py").read_text(encoding="utf-8")
-    assert 'VERSION = "0.18.0"' in main
-    assert "opportunity_center.css" in main and "opportunity_center.js" in main
     assert "opportunity_center.router" in main
-    assert "opsbot-v0.18.0-shell" in worker
+    assert "opportunity_center.css" not in main
+    assert "opportunity_center.js" not in main
     assert "opportunity-monitor" in scheduler and "monitor_enabled_workflows" in scheduler
     assert '/api/opportunity-center' in router

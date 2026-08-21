@@ -6,18 +6,20 @@ from app.services.marketplace_supplier_sources import (
 )
 
 
-def test_aliexpress_connection_status_requires_verified_credentials(monkeypatch):
+def test_aliexpress_connection_status_requires_oauth_and_verification(monkeypatch):
     monkeypatch.setattr(
         "app.services.marketplace_supplier_sources.load_aliexpress_credentials",
         lambda: {
             "app_key": "demo-key",
             "app_secret": "demo-secret",
+            "access_token": "oauth-token",
             "verified_at": "2026-08-21T20:00:00+00:00",
             "last_error": "",
         },
     )
     status = aliexpress_connection_status()
     assert status["configured"] is True
+    assert status["oauth_authorized"] is True
     assert status["connected"] is True
     assert status["supplier"] is True
     assert status["capabilities"]["search"] is True

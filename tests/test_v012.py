@@ -22,12 +22,11 @@ def test_trend_extraction_counts_public_metadata_without_claiming_sales():
     assert "pas volume de recherche ni ventes" in portable["meaning"]
 
 
-def test_supplier_hub_groups_connected_and_assisted_sources():
+def test_supplier_hub_is_limited_to_active_api_sources():
     db.init_db()
     payload = client.get("/api/suppliers/hub").json()
     ids = {row["id"] for row in payload["providers"]}
-    assert {"cj", "dropxl", "printful", "printify", "gelato", "wholesale2b", "hypersku"} <= ids
-    assert "bigbuy" not in ids
+    assert ids == {"cj", "amazon", "aliexpress"}
     assert payload["dry_run"] is True
 
 

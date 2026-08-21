@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -7,6 +8,7 @@ from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier
 from app.services.cj import CJClient, CJError
 from app.services.db import list_suppliers, save_supplier, upsert_product
 from app.services.marketplace_supplier_sources import amazon_supplier_offers
+from app.services.profit import suggest_price
 
 router = APIRouter(prefix="/api/supplier-flow", tags=["Supplier Flow"])
 
@@ -22,6 +24,7 @@ class OfferIn(BaseModel):
     shipping_days: int | None = Field(default=None, ge=0)
     image_url: str = Field(default="", max_length=1200)
     source_url: str = Field(default="", max_length=1200)
+    cj_pid: str = Field(default="", max_length=120)
 
 
 def _normalized_group(source: str, offers: list[dict]) -> dict:
@@ -59,7 +62,7 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
             rows.append({
                 "provider": "CJ",
                 "supplier_sku": product.get("sku") or product.get("cj_pid") or "",
-                "cj_pid": product.get("cj_pid"),
+                "cj_pid": product.get("cj_pid") or "",
                 "name": product.get("name") or keyword,
                 "price": product.get("price_usd"),
                 "shipping_cost": None,
@@ -72,10 +75,11 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
                 "quality_evidence": [
                     f"Stock observé : {product.get('stock', 0)}",
                     f"Présence CJ : {product.get('listed_num', 0)} listings",
+                    "Transport France calculé au moment de l'ajout",
                 ],
             })
         return {"source": "CJ", "products": rows, "total": len(rows)}, []
-    except (CJError, RuntimeError, Exception) as exc:
+    except Exception as exc:
         return None, [{"source": "CJ", "message": str(exc)}]
 
 
@@ -143,33 +147,127 @@ def _supplier_for(provider: str) -> int:
     }))
 
 
+def _delivery_days(value: object) -> int:
+    numbers = [int(item) for item in re.findall(r"\d+", str(value or ""))]
+    return max(numbers, default=0)
+
+
+async def _add_cj_offer(payload: OfferIn, supplier_id: int, sku: str) -> dict:
+    if not payload.cj_pid:
+        raise HTTPException(400, "Identifiant produit CJ manquant. Relancez la recherche fournisseur avant l'ajout.")
+
+    client = CJClient()
+    try:
+        detail = await client.product_detail(payload.cj_pid)
+        variants = [row for row in detail.get("variants") or [] if float(row.get("price_usd") or 0) > 0]
+        if not variants:
+            raise CJError("CJ ne retourne aucune variante exploitable pour ce produit")
+
+        stocked = [row for row in variants if int(row.get("stock") or 0) > 0]
+        variant = min(stocked or variants, key=lambda row: (float(row.get("price_usd") or 0), str(row.get("name") or "")))
+        inventories = [row for row in variant.get("inventories") or [] if int(row.get("stock") or 0) > 0]
+        source_country = next((row.get("country_code") for row in inventories if row.get("country_code") == "FR"), None)
+        source_country = source_country or next((row.get("country_code") for row in inventories if row.get("country_code") == "CN"), None)
+        source_country = source_country or next((row.get("country_code") for row in inventories if row.get("country_code")), "CN")
+
+        freight = await client.freight_options(
+            variant["vid"],
+            start_country=source_country,
+            destination_country="FR",
+        )
+        if not freight:
+            raise CJError("CJ ne propose aucun transport vers la France pour cette variante")
+
+        chosen = freight[0]
+        exchange = await client.usd_to_eur()
+        supplier_eur = round(float(variant.get("price_usd") or payload.price) * exchange["rate"], 2)
+        shipping_eur = round(float(chosen.get("price_usd") or 0) * exchange["rate"], 2)
+        pricing = suggest_price({"supplier_cost": supplier_eur, "shipping_cost": shipping_eur})
+        days = _delivery_days(chosen.get("delivery_days"))
+        if days <= 0:
+            raise CJError("CJ ne fournit pas de délai exploitable pour le transport sélectionné")
+
+        product_id = upsert_product({
+            "supplier_sku": sku,
+            "title": payload.name,
+            "description": (
+                f"Produit importé depuis CJ Dropshipping. Variante {variant.get('sku') or variant.get('vid')}. "
+                f"Transport France : {chosen.get('name') or 'CJ'} · départ {source_country}. "
+                "Données fournisseur à revérifier avant publication eBay."
+            ),
+            "supplier_cost": supplier_eur,
+            "shipping_cost": shipping_eur,
+            "stock": int(variant.get("stock") or payload.stock or 0),
+            "shipping_days": days,
+            "target_price": pricing["suggested_price"],
+            "marketplace_id": "EBAY_FR",
+            "currency": "EUR",
+            "images": [variant.get("image_url") or payload.image_url] if (variant.get("image_url") or payload.image_url) else [],
+            "aspects": {},
+            "supplier_id": supplier_id,
+            "product_status": "À tester",
+            "suggested_price": pricing["suggested_price"],
+        })
+        return {
+            "created": True,
+            "product_id": product_id,
+            "pricing_ready": True,
+            "supplier_cost": supplier_eur,
+            "shipping_cost": shipping_eur,
+            "shipping_days": days,
+            "target_price": pricing["suggested_price"],
+            "message": (
+                f"Produit CJ ajouté avec transport France {shipping_eur:.2f} EUR "
+                f"et prix conseillé {pricing['suggested_price']:.2f} EUR."
+            ),
+        }
+    except CJError as exc:
+        raise HTTPException(400, f"Calcul CJ impossible : {exc}") from exc
+
+
 @router.post("/add")
-def add_offer(payload: OfferIn):
+async def add_offer(payload: OfferIn):
     provider = payload.provider.strip().lower()
     supplier_id = _supplier_for(provider)
     prefix = {"aliexpress": "ALI", "amazon": "AMZ", "cj": "CJ"}[provider]
     sku = f"{prefix}-{payload.supplier_sku}"[:50]
+
+    if provider == "cj":
+        return await _add_cj_offer(payload, supplier_id, sku)
+
+    logistics_complete = payload.shipping_cost is not None and payload.shipping_days is not None and payload.shipping_days > 0
+    pricing = None
+    if logistics_complete:
+        pricing = suggest_price({"supplier_cost": payload.price, "shipping_cost": payload.shipping_cost})
+
     product_id = upsert_product({
         "supplier_sku": sku,
         "title": payload.name,
         "description": (
             f"Produit importé depuis {payload.provider}. "
-            f"Source fournisseur : {payload.source_url}" if payload.source_url else f"Produit importé depuis {payload.provider}."
+            + (f"Source fournisseur : {payload.source_url}. " if payload.source_url else "")
+            + ("Transport API confirmé." if logistics_complete else "Transport non fourni par l'API : coût et délai à confirmer avant publication.")
         ),
         "supplier_cost": payload.price,
-        "shipping_cost": payload.shipping_cost or 0,
+        "shipping_cost": payload.shipping_cost if payload.shipping_cost is not None else 0,
         "stock": payload.stock or 0,
-        "shipping_days": payload.shipping_days if payload.shipping_days is not None else 0,
-        "target_price": None,
+        "shipping_days": payload.shipping_days if logistics_complete else 99,
+        "target_price": pricing["suggested_price"] if pricing else None,
         "marketplace_id": "EBAY_FR",
         "currency": payload.currency.upper(),
         "images": [payload.image_url] if payload.image_url else [],
         "aspects": {},
         "supplier_id": supplier_id,
         "product_status": "À tester",
+        "suggested_price": pricing["suggested_price"] if pricing else None,
     })
     return {
         "created": True,
         "product_id": product_id,
-        "message": "Produit ajouté au dashboard Produits. Stock, livraison et marge restent à valider avant publication eBay.",
+        "pricing_ready": bool(pricing),
+        "message": (
+            f"Produit ajouté avec prix conseillé {pricing['suggested_price']:.2f} {payload.currency.upper()}."
+            if pricing
+            else "Produit ajouté. Le transport n'est pas fourni par cette API : livraison et prix conseillé restent à confirmer."
+        ),
     }

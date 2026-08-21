@@ -404,17 +404,15 @@ def test_rfq_template_is_explicitly_non_binding():
     assert "No order is confirmed" in message
 
 
-def test_connections_endpoint_has_no_pinterest_or_reddit():
+def test_connections_endpoint_has_only_current_visible_sources():
     db.init_db()
     payload = TestClient(app).get("/api/connections").json()
     ids = {source["id"] for source in payload["sources"]}
-    assert ids == {"amazon", "tiktok", "youtube", "etsy", "dropxl", "printful", "printify", "gelato"}
+    assert ids == {"amazon", "tiktok", "youtube", "aliexpress"}
     assert "Pinterest" not in str(payload)
     assert "Reddit" not in str(payload)
-    assert any(row["id"] == "aliexpress" for row in payload["restricted"])
-    assert {row["id"] for row in payload["assisted_suppliers"]} == {
-        "hypersku", "banggood", "wholesale2b", "alibaba"
-    }
+    assert {row["id"] for row in payload["restricted"]} == {"google_trends", "meta"}
+    assert payload["assisted_suppliers"] == []
     assert payload["dry_run"] is True
 
 
