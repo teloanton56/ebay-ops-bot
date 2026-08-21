@@ -15,7 +15,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.14.5"
+VERSION = "0.15.0"
 
 
 @asynccontextmanager
@@ -101,8 +101,16 @@ def dashboard(request: Request):
     }
     html = templates.get_template("dashboard.html").render(context)
     html = html.replace(
+        "</head>",
+        f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n</head>',
+    )
+    html = html.replace(
         "</body>",
-        f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n</body>',
+        (
+            f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
+            f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
+            "</body>"
+        ),
     )
     return HTMLResponse(html)
 

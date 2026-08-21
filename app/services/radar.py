@@ -6,6 +6,7 @@ from app.services.cj import CJClient
 from app.services.connections import AmazonRadarClient, connection_status
 from app.services.db import previous_radar_scan, save_radar_scan
 from app.services.ebay import EbayClient
+from app.services.product_research import build_product_research_summary
 
 
 MARKETPLACES = {
