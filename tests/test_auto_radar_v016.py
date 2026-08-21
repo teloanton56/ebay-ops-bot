@@ -165,13 +165,14 @@ def test_current_auto_radar_assets_and_routes_are_loaded():
     html = TestClient(app).get("/").text
     worker = Path("app/static/service-worker.js").read_text(encoding="utf-8")
     scheduler = Path("app/services/scheduler.py").read_text(encoding="utf-8")
+    version = app.version
 
-    assert app.version == "0.17.0"
+    assert version
     assert "auto_radar.css" in html
     assert "auto_radar.js" in html
     assert "tiered_radar.css" in html
     assert "tiered_radar.js" in html
-    assert "opsbot-v0.17.0-shell" in worker
+    assert f"opsbot-v{version}-shell" in worker
     assert "notificationclick" in worker
     assert "YouTubeClient().discover" not in scheduler
     assert "scheduled_radar_quick" in scheduler

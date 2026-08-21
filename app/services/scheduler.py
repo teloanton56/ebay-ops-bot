@@ -84,6 +84,17 @@ async def scheduled_radar_full():
     await _refresh_explicit_watchlist()
 
 
+async def scheduled_opportunity_monitor():
+    """Refresh selected suppliers and market signals for launch candidates."""
+    from app.services.opportunity_center import monitor_enabled_workflows
+
+    try:
+        await monitor_enabled_workflows()
+    except Exception:
+        # Monitoring alerts must never stop Radar, catalogue or backup jobs.
+        pass
+
+
 async def scheduled_backup():
     from app.services.backups import create_backup
 
@@ -100,7 +111,7 @@ def _configure_radar_jobs() -> None:
         return
     from app.services.radar_runtime import load_radar_settings
 
-    for job_id in ("radar-watchlist", "radar-quick", "radar-full"):
+    for job_id in ("radar-watchlist", "radar-quick", "radar-full", "opportunity-monitor"):
         try:
             if _scheduler.get_job(job_id):
                 _scheduler.remove_job(job_id)
@@ -125,6 +136,15 @@ def _configure_radar_jobs() -> None:
         "interval",
         hours=runtime["full_hours"],
         id="radar-full",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.add_job(
+        scheduled_opportunity_monitor,
+        "interval",
+        minutes=max(runtime["quick_minutes"], 60),
+        id="opportunity-monitor",
         replace_existing=True,
         max_instances=1,
         coalesce=True,

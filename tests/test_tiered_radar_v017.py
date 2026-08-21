@@ -219,9 +219,10 @@ def test_tiered_radar_settings_api_and_assets_are_available():
     client = TestClient(app)
     response = client.get("/api/radar/auto/settings")
     html = client.get("/").text
+    version = app.version
 
     assert response.status_code == 200
     assert response.json()["settings"]["quick_minutes"] == 30
     assert response.json()["settings"]["candidate_pool"] == 200
-    assert "tiered_radar.css?v=0.17.0" in html
-    assert "tiered_radar.js?v=0.17.0" in html
+    assert f"tiered_radar.css?v={version}" in html
+    assert f"tiered_radar.js?v={version}" in html
