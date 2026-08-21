@@ -3,10 +3,16 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.services.connections import (ASSISTED_SUPPLIERS, IntegrationError, PROVIDERS, connection_status,
+from app.services.connections import (IntegrationError, PROVIDERS, connection_status,
                                       connection_statuses, delete_credentials,
                                       save_credentials, scan_connected_sources,
                                       test_provider)
+from app.services.marketplace_supplier_sources import (
+    aliexpress_connection_status,
+    delete_aliexpress_credentials,
+    save_aliexpress_credentials,
+    test_aliexpress_connection,
+)
 
 
 router = APIRouter(prefix="/api/connections", tags=["Connexions"])
@@ -20,6 +26,9 @@ class ConnectionIn(BaseModel):
     client_key: str | None = Field(default=None, max_length=1000)
     client_secret: str | None = Field(default=None, max_length=2000)
     refresh_token: str | None = Field(default=None, max_length=4000)
+    app_key: str | None = Field(default=None, max_length=1000)
+    app_secret: str | None = Field(default=None, max_length=2000)
+    tracking_id: str | None = Field(default=None, max_length=1000)
     environment: Literal["production", "sandbox"] | None = None
 
 
@@ -31,12 +40,12 @@ class SignalScanIn(BaseModel):
 
 @router.get("")
 def list_connections():
+    hidden = {"etsy", "dropxl", "printful", "printify", "gelato"}
+    sources = [row for row in connection_statuses() if row["id"] not in hidden]
+    sources.append(aliexpress_connection_status())
     return {
-        "sources": connection_statuses(),
+        "sources": sources,
         "restricted": [
-            {"id": "aliexpress", "name": "AliExpress", "status": "Recherche uniquement",
-             "url": "https://www.aliexpress.com/",
-             "note": "Comparaison de produits uniquement : aucune commande eBay ne sera exécutée via une marketplace de détail."},
             {"id": "google_trends", "name": "Google Trends", "status": "Accès Alpha à demander",
              "url": "https://developers.google.com/search/apis/trends",
              "note": "Le connecteur sera activé uniquement après acceptation officielle de Google."},
@@ -44,7 +53,7 @@ def list_connections():
              "url": "https://www.facebook.com/ads/library/api/",
              "note": "Les annonces peuvent être observées, jamais les conversions concurrentes."},
         ],
-        "assisted_suppliers": ASSISTED_SUPPLIERS,
+        "assisted_suppliers": [],
         "dry_run": True,
     }
 
@@ -59,11 +68,24 @@ async def scan_signals(payload: SignalScanIn):
 
 @router.post("/{provider}")
 async def save_connection(provider: str, payload: ConnectionIn):
-    if provider not in PROVIDERS:
-        raise HTTPException(404, "Source inconnue")
     values = {key: value for key, value in payload.model_dump().items() if value is not None and str(value).strip()}
     if not values:
         raise HTTPException(400, "Aucun identifiant renseigné")
+
+    if provider == "aliexpress":
+        save_aliexpress_credentials(values)
+        if not aliexpress_connection_status()["configured"]:
+            raise HTTPException(400, "Identifiants AliExpress incomplets")
+        try:
+            tested = await test_aliexpress_connection()
+        except Exception as exc:
+            raise HTTPException(400, f"Identifiants enregistrés, mais test impossible : {exc}") from exc
+        return {"saved": True, "tested": True, "connection": aliexpress_connection_status(),
+                "observed": tested.get("observed", 0),
+                "message": "Connexion fournisseur AliExpress vérifiée."}
+
+    if provider not in PROVIDERS:
+        raise HTTPException(404, "Source inconnue")
     try:
         save_credentials(provider, values)
         missing = [field for field in PROVIDERS[provider]["required"]
@@ -82,6 +104,13 @@ async def save_connection(provider: str, payload: ConnectionIn):
 
 @router.post("/{provider}/test")
 async def test_connection(provider: str):
+    if provider == "aliexpress":
+        try:
+            result = await test_aliexpress_connection()
+            return {"tested": True, "connection": aliexpress_connection_status(), **result}
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     if provider not in PROVIDERS:
         raise HTTPException(404, "Source inconnue")
     try:
@@ -93,6 +122,10 @@ async def test_connection(provider: str):
 
 @router.delete("/{provider}")
 def remove_connection(provider: str):
+    if provider == "aliexpress":
+        delete_aliexpress_credentials()
+        return {"deleted": True, "connection": aliexpress_connection_status()}
+
     if provider not in PROVIDERS:
         raise HTTPException(404, "Source inconnue")
     try:
