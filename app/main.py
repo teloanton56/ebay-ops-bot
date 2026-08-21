@@ -103,6 +103,14 @@ def dashboard(request: Request):
         "version": VERSION,
     }
     html = templates.get_template("dashboard.html").render(context)
+    # The simplified, real-data-only dashboard lineage began at v0.14.3. Keep
+    # that invisible baseline available for diagnostics while the visible release
+    # number continues to come exclusively from VERSION.
+    html = html.replace(
+        "<body>",
+        '<body data-real-data-ui-baseline="v0.14.3">',
+        1,
+    )
     html = html.replace(
         "L'environnement reste verrouillé sur Sandbox.",
         "Utilisez le keyset correspondant à l'environnement choisi. Production est disponible avec vos clés live.",
