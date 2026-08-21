@@ -31,7 +31,7 @@ def test_product_research_combines_measured_market_signals():
     summary = build_product_research_summary(markets)
 
     assert summary["method"] == "MARKET_PROXY_V1"
-    assert summary["score"] >= 75
+    assert summary["score"] == 81
     assert summary["verdict"] == "À TESTER"
     assert summary["confidence"] == "Élevée"
     assert summary["demand_proxy"]["label"] == "Bon"
@@ -43,7 +43,7 @@ def test_product_research_combines_measured_market_signals():
     assert any("Volume exact" in item for item in summary["missing_signals"])
 
 
-def test_product_research_never_calls_ebay_listing_count_demand():
+def test_product_research_penalizes_missing_demand_evidence():
     markets = [
         {
             "source": "EBAY",
@@ -60,7 +60,7 @@ def test_product_research_never_calls_ebay_listing_count_demand():
 
     summary = build_product_research_summary(markets)
 
-    assert summary["score"] == 100
+    assert summary["score"] == 72
     assert summary["verdict"] == "À CREUSER"
     assert summary["confidence"] == "Faible"
     assert summary["demand_proxy"]["label"] == "À confirmer"
