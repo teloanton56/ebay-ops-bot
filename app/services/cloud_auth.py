@@ -81,12 +81,12 @@ def credentials_match(email: str, password: str, settings: Settings) -> bool:
 
 def login_blocked(client_id: str) -> tuple[bool, int]:
     now = time.monotonic()
-    failures = _FAILURES[client_id]
-    while failures and now - failures[0] > _FAILURE_WINDOW_SECONDS:
-        failures.popleft()
-    if len(failures) < _MAX_FAILURES:
+    failures = _FAILS = _FAILURES[client_id]
+    while _FAILS and now - _FAILS[0] > _FAILURE_WINDOW_SECONDS:
+        _FAILS.popleft()
+    if len(_FAILS) < _MAX_FAILURES:
         return False, 0
-    return True, max(1, int(_FAILURE_WINDOW_SECONDS - (now - failures[0])))
+    return True, max(1, int(_FAILURE_WINDOW_SECONDS - (now - _FAILS[0])))
 
 
 def record_login_failure(client_id: str) -> None:
@@ -102,6 +102,7 @@ def public_path(path: str) -> bool:
         path == "/health"
         or path == "/login"
         or path == "/api/cloud/login"
+        or path == "/api/auth/ebay/callback"
         or path == "/api/ebay/account-deletion"
         or path == "/manifest.webmanifest"
         or path == "/service-worker.js"
