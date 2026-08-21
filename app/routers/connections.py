@@ -8,13 +8,15 @@ from app.services.connections import (IntegrationError, PROVIDERS, connection_st
                                       connection_statuses, delete_credentials,
                                       save_credentials, scan_connected_sources,
                                       test_provider)
+from app.services.aliexpress_modern_oauth import (
+    authorization_url as modern_aliexpress_authorization_url,
+    exchange_authorization as modern_exchange_aliexpress_authorization,
+    test_connection as modern_test_aliexpress_connection,
+)
 from app.services.marketplace_supplier_sources import (
-    aliexpress_authorization_url,
     aliexpress_connection_status,
     delete_aliexpress_credentials,
-    exchange_aliexpress_authorization,
     save_aliexpress_credentials,
-    test_aliexpress_connection,
 )
 
 
@@ -76,7 +78,7 @@ async def scan_signals(payload: SignalScanIn):
 @router.get("/aliexpress/authorize", name="aliexpress_authorize")
 def authorize_aliexpress(request: Request):
     try:
-        url = aliexpress_authorization_url(_aliexpress_redirect_uri(request))
+        url = modern_aliexpress_authorization_url(_aliexpress_redirect_uri(request))
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"authorization_url": url, "redirect_uri": _aliexpress_redirect_uri(request)}
@@ -93,8 +95,8 @@ async def aliexpress_oauth_callback(request: Request, code: str = "", state: str
         save_aliexpress_credentials({"last_error": "Code OAuth AliExpress manquant", "verified_at": ""})
         return RedirectResponse("/?aliexpress=error#connections", status_code=303)
     try:
-        await exchange_aliexpress_authorization(code, state, _aliexpress_redirect_uri(request))
-        await test_aliexpress_connection()
+        await modern_exchange_aliexpress_authorization(code, state, _aliexpress_redirect_uri(request))
+        await modern_test_aliexpress_connection()
     except Exception as exc:
         save_aliexpress_credentials({"last_error": str(exc), "verified_at": ""})
         return RedirectResponse("/?aliexpress=error#connections", status_code=303)
@@ -145,7 +147,7 @@ async def test_connection(provider: str):
         if not status.get("oauth_authorized"):
             raise HTTPException(400, "Autorisez d'abord votre compte AliExpress avec le bouton Autoriser AliExpress")
         try:
-            result = await test_aliexpress_connection()
+            result = await modern_test_aliexpress_connection()
             return {"tested": True, "connection": aliexpress_connection_status(), **result}
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
