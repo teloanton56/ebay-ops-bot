@@ -9,9 +9,9 @@ from app.services.connections import (IntegrationError, YouTubeClient, connectio
 from app.services.db import (delete_factory_lead, delete_radar_watch, list_factory_leads, list_radar_scans,
                              delete_rfq, list_radar_watchlist, list_rfqs, list_trend_discoveries,
                              save_factory_lead, save_radar_watch, save_rfq)
+from app.services.product_research import build_product_research_summary
 from app.services.radar import (AMAZON_MARKETPLACES, MARKETPLACES, analyze_amazon_market,
-                                analyze_ebay_market, build_product_research_summary,
-                                build_rfq_message, source_statuses)
+                                analyze_ebay_market, build_rfq_message, source_statuses)
 
 
 router = APIRouter(prefix="/api/radar", tags=["Radar 360"])
