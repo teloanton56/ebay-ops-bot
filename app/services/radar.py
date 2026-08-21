@@ -19,7 +19,7 @@ AMAZON_MARKETPLACES = {key: value["name"] for key, value in AmazonRadarClient.ma
 def source_statuses() -> list[dict]:
     settings = get_settings()
     ebay_keys = bool(settings.ebay_client_id and settings.ebay_client_secret)
-    ebay_live = ebay_keys and settings.ebay_env == "production"
+    ebay_live = ebay_keys and settings.ebay_effective_env == "production"
     cj = CJClient().status()
     return [
         {"id": "ebay", "name": "eBay multi-pays", "kind": "Marketplace", "configured": ebay_keys,
