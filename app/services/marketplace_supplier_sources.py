@@ -4,8 +4,10 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -16,7 +18,10 @@ from app.services.opportunity_store import _days_from_text, _match_strength, _sa
 
 
 ALIEXPRESS_STORAGE_KEY = "integration:aliexpress"
+ALIEXPRESS_OAUTH_STATE_KEY = "integration:aliexpress:oauth_state"
 ALIEXPRESS_REQUIRED = ("app_key", "app_secret")
+ALIEXPRESS_OAUTH_AUTHORIZE = "https://oauth.aliexpress.com/authorize"
+ALIEXPRESS_OAUTH_TOKEN = "https://oauth.aliexpress.com/token"
 
 
 def _aliexpress_env_credentials() -> dict[str, str]:
@@ -43,7 +48,19 @@ def load_aliexpress_credentials() -> dict[str, Any]:
 
 
 def save_aliexpress_credentials(values: dict[str, Any]) -> None:
-    allowed = {*ALIEXPRESS_REQUIRED, "tracking_id", "verified_at", "last_error"}
+    allowed = {
+        *ALIEXPRESS_REQUIRED,
+        "tracking_id",
+        "access_token",
+        "refresh_token",
+        "expire_time",
+        "refresh_token_valid_time",
+        "user_id",
+        "user_nick",
+        "authorized_at",
+        "verified_at",
+        "last_error",
+    }
     try:
         current = load_aliexpress_credentials()
     except RuntimeError:
@@ -62,6 +79,7 @@ def save_aliexpress_credentials(values: dict[str, Any]) -> None:
 
 def delete_aliexpress_credentials() -> None:
     kv_set(ALIEXPRESS_STORAGE_KEY, encrypt('{"disabled": true}') or '{"disabled": true}')
+    kv_set(ALIEXPRESS_OAUTH_STATE_KEY, "")
 
 
 def _mask(value: str) -> str:
@@ -80,18 +98,34 @@ def aliexpress_connection_status() -> dict[str, Any]:
         data = {}
         recovery_required = True
     configured = all(data.get(field) for field in ALIEXPRESS_REQUIRED)
-    connected = configured and bool(data.get("verified_at")) and not data.get("last_error")
+    authorized = configured and bool(data.get("access_token"))
+    connected = authorized and bool(data.get("verified_at")) and not data.get("last_error")
+    if connected:
+        status = "Connecté"
+    elif recovery_required:
+        status = "À reconnecter"
+    elif not configured:
+        status = "À connecter"
+    elif not authorized:
+        status = "À autoriser"
+    else:
+        status = "À tester"
     return {
         "id": "aliexpress",
         "name": "AliExpress",
         "kind": "Fournisseur marketplace",
         "configured": configured,
+        "oauth_authorized": authorized,
         "connected": connected,
         "ready": connected,
-        "status": "Connecté" if connected else "À reconnecter" if recovery_required else "À tester" if configured else "À connecter",
-        "note": "Catalogue fournisseur AliExpress : recherche produit, prix, délai et données logistiques disponibles sont normalisés pour le sourcing.",
+        "status": status,
+        "note": (
+            "AliExpress nécessite App Key + App Secret puis une autorisation OAuth du compte. "
+            "Le test final utilise l'API AE-Dropshipper."
+        ),
         "docs_url": "https://open.aliexpress.com/",
         "verified_at": data.get("verified_at"),
+        "authorized_at": data.get("authorized_at"),
         "last_error": "Identifiants AliExpress incompatibles — reconnectez AliExpress" if recovery_required else data.get("last_error", ""),
         "credential_masked": _mask(str(data.get("app_key") or "")),
         "environment": "production",
@@ -108,6 +142,65 @@ def aliexpress_connection_status() -> dict[str, Any]:
             "margin_analysis": True,
         },
     }
+
+
+def aliexpress_authorization_url(redirect_uri: str) -> str:
+    credentials = load_aliexpress_credentials()
+    app_key = str(credentials.get("app_key") or "").strip()
+    app_secret = str(credentials.get("app_secret") or "").strip()
+    if not app_key or not app_secret:
+        raise RuntimeError("Enregistrez d'abord l'App Key et l'App Secret AliExpress")
+    state = secrets.token_urlsafe(32)
+    kv_set(ALIEXPRESS_OAUTH_STATE_KEY, state)
+    return ALIEXPRESS_OAUTH_AUTHORIZE + "?" + urlencode({
+        "response_type": "code",
+        "client_id": app_key,
+        "redirect_uri": redirect_uri,
+        "state": state,
+        "view": "web",
+        "sp": "ae",
+    })
+
+
+async def exchange_aliexpress_authorization(code: str, state: str, redirect_uri: str) -> dict[str, Any]:
+    expected = kv_get(ALIEXPRESS_OAUTH_STATE_KEY)
+    if not expected or state != expected:
+        raise RuntimeError("État OAuth AliExpress invalide. Relancez l'autorisation depuis le bot.")
+    credentials = load_aliexpress_credentials()
+    app_key = str(credentials.get("app_key") or "").strip()
+    app_secret = str(credentials.get("app_secret") or "").strip()
+    if not app_key or not app_secret:
+        raise RuntimeError("Identifiants AliExpress incomplets")
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(ALIEXPRESS_OAUTH_TOKEN, data={
+            "code": code,
+            "grant_type": "authorization_code",
+            "client_id": app_key,
+            "client_secret": app_secret,
+            "sp": "ae",
+            "redirect_uri": redirect_uri,
+        })
+    try:
+        payload = response.json()
+    except Exception as exc:
+        raise RuntimeError("AliExpress a renvoyé une réponse OAuth illisible") from exc
+    if response.is_error or not payload.get("access_token"):
+        message = payload.get("error_description") or payload.get("error") or payload.get("msg") or "Autorisation AliExpress refusée"
+        save_aliexpress_credentials({"last_error": str(message), "verified_at": ""})
+        raise RuntimeError(str(message))
+    save_aliexpress_credentials({
+        "access_token": payload.get("access_token"),
+        "refresh_token": payload.get("refresh_token"),
+        "expire_time": payload.get("expire_time"),
+        "refresh_token_valid_time": payload.get("refresh_token_valid_time"),
+        "user_id": payload.get("user_id"),
+        "user_nick": payload.get("user_nick"),
+        "authorized_at": datetime.now(timezone.utc).isoformat(),
+        "verified_at": "",
+        "last_error": "",
+    })
+    kv_set(ALIEXPRESS_OAUTH_STATE_KEY, "")
+    return payload
 
 
 async def amazon_supplier_offers(keyword: str) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
@@ -163,10 +256,15 @@ class AliExpressSupplierClient:
         self.app_key = str(credentials.get("app_key") or "").strip()
         self.app_secret = str(credentials.get("app_secret") or "").strip()
         self.tracking_id = str(credentials.get("tracking_id") or "").strip()
+        self.access_token = str(credentials.get("access_token") or "").strip()
 
     @property
     def configured(self) -> bool:
         return bool(self.app_key and self.app_secret)
+
+    @property
+    def authorized(self) -> bool:
+        return bool(self.configured and self.access_token)
 
     def _timestamp(self) -> str:
         return (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
@@ -175,16 +273,38 @@ class AliExpressSupplierClient:
         raw = "".join(f"{key}{params[key]}" for key in sorted(params) if key != "sign")
         return hmac.new(self.app_secret.encode(), raw.encode(), hashlib.md5).hexdigest().upper()
 
-    async def search(self, keyword: str, page_size: int = 10) -> dict[str, Any]:
+    async def _call(self, method: str, business_params: dict[str, Any], *, require_session: bool = False) -> dict[str, Any]:
         if not self.configured:
             raise RuntimeError("Clé App et secret AliExpress manquants")
+        if require_session and not self.authorized:
+            raise RuntimeError("Autorisation OAuth AliExpress requise")
         params: dict[str, Any] = {
             "app_key": self.app_key,
             "format": "json",
-            "method": "aliexpress.affiliate.product.query",
+            "method": method,
             "sign_method": "hmac",
             "timestamp": self._timestamp(),
             "v": "2.0",
+            **business_params,
+        }
+        if require_session:
+            params["session"] = self.access_token
+        params["sign"] = self._sign(params)
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(self.endpoint, data=params)
+        if response.is_error:
+            raise RuntimeError(f"AliExpress API HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except Exception as exc:
+            raise RuntimeError("Réponse AliExpress illisible") from exc
+        if payload.get("error_response"):
+            error = payload["error_response"]
+            raise RuntimeError(str(error.get("sub_msg") or error.get("msg") or "AliExpress refuse la requête"))
+        return payload
+
+    async def search(self, keyword: str, page_size: int = 10) -> dict[str, Any]:
+        params: dict[str, Any] = {
             "keywords": keyword,
             "page_no": 1,
             "page_size": min(max(int(page_size), 1), 50),
@@ -199,16 +319,7 @@ class AliExpressSupplierClient:
         }
         if self.tracking_id:
             params["tracking_id"] = self.tracking_id
-        params["sign"] = self._sign(params)
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(self.endpoint, data=params)
-        if response.is_error:
-            raise RuntimeError(f"AliExpress API HTTP {response.status_code}")
-        payload = response.json()
-        if payload.get("error_response"):
-            error = payload["error_response"]
-            raise RuntimeError(str(error.get("sub_msg") or error.get("msg") or "AliExpress refuse la recherche"))
-        return payload
+        return await self._call("aliexpress.affiliate.product.query", params, require_session=False)
 
     @staticmethod
     def products(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -219,15 +330,31 @@ class AliExpressSupplierClient:
         return [row for row in products if isinstance(row, dict)]
 
     async def test(self) -> dict[str, Any]:
-        payload = await self.search("portable fan", page_size=1)
-        return {"ok": True, "observed": len(self.products(payload)), "marketplace": "AliExpress"}
+        payload = await self._call("aliexpress.ds.recommend.feed.get", {
+            "country": "FR",
+            "target_currency": "EUR",
+            "target_language": "FR",
+            "page_size": 1,
+            "page_no": 1,
+            "feed_name": "DS bestseller",
+        }, require_session=True)
+        root = payload.get("aliexpress_ds_recommend_feed_get_response") or payload
+        code = root.get("rsp_code")
+        if code not in (None, 200, "200"):
+            raise RuntimeError(str(root.get("rsp_msg") or f"AliExpress Dropshipper refuse le test ({code})"))
+        result = root.get("result") or {}
+        observed = result.get("current_record_count")
+        if observed is None:
+            products = (result.get("products") or {}).get("integer") or []
+            observed = len(products) if isinstance(products, list) else 0
+        return {"ok": True, "observed": int(observed or 0), "marketplace": "AliExpress", "api": "AE-Dropshipper"}
 
 
 async def test_aliexpress_connection() -> dict[str, Any]:
     try:
         result = await AliExpressSupplierClient().test()
     except Exception as exc:
-        save_aliexpress_credentials({"last_error": str(exc) or "Connexion refusée", "verified_at": "-"})
+        save_aliexpress_credentials({"last_error": str(exc) or "Connexion refusée", "verified_at": ""})
         raise
     save_aliexpress_credentials({"verified_at": datetime.now(timezone.utc).isoformat(), "last_error": ""})
     return result
@@ -284,5 +411,5 @@ def aliexpress_supplier_status() -> dict[str, Any]:
         "name": "AliExpress",
         "kind": "Fournisseur marketplace",
         "url": status["docs_url"],
-        "note": "Catalogue AliExpress intégré au sourcing avec le même schéma fournisseur que CJ : SKU, prix, stock/délai/livraison lorsqu'ils sont disponibles et analyse de marge.",
+        "note": "Connexion AliExpress via OAuth + AE-Dropshipper. Le sourcing par mot-clé utilise le catalogue disponible pour l'application.",
     }
