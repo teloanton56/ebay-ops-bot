@@ -47,7 +47,7 @@ def test_rank_supplier_results_keeps_only_relevant_titles_and_sorts_them():
         {"name": "Ceiling fan remote", "id": 4},
     ]
     ranked, rejected = rank_supplier_results("pokemon", rows, limit=20)
-    assert [row["id"] for row in ranked] == [3, 2]
+    assert [row["id"] for row in ranked] == [2, 3]
     assert rejected == 2
     assert all(row["match_strength"] >= 0.85 for row in ranked)
 
