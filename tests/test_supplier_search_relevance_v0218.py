@@ -123,11 +123,11 @@ def test_aliexpress_text_search_does_not_force_sales_sort_anymore():
     assert "page_size=50" in source
 
 
-def test_v0218_ui_exposes_relevance_and_cache_version():
+def test_supplier_relevance_ui_stays_registered_on_current_version():
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     worker = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
     ui = (ROOT / "app/static/supplier_flow_v2.js").read_text(encoding="utf-8")
-    assert 'VERSION = "0.21.8"' in main
-    assert "opsbot-v0.21.8-shell" in worker
+    assert 'VERSION = "0.21.9"' in main
+    assert "opsbot-v0.21.9-shell" in worker
     assert "Pertinence ${Math.round(relevance * 100)}%" in ui
     assert "hors sujet masqué(s)" in ui
