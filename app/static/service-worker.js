@@ -1,17 +1,16 @@
-const SHELL = 'opsbot-v0.21.5-shell';
+const SHELL = 'opsbot-v0.21.4-shell';
 const ASSETS = [
-  '/static/app.css?v=0.21.5',
-  '/static/runtime_compat.js?v=0.21.5',
-  '/static/app.js?v=0.21.5',
-  '/static/provider_cleanup.js?v=0.21.5',
-  '/static/workflow_cleanup.js?v=0.21.5',
-  '/static/product_research.css?v=0.21.5',
-  '/static/product_research.js?v=0.21.5',
-  '/static/auto_radar.css?v=0.21.5',
-  '/static/auto_radar.js?v=0.21.5',
-  '/static/tiered_radar.css?v=0.21.5',
-  '/static/tiered_radar.js?v=0.21.5',
-  '/static/supplier_flow_v2.js?v=0.21.5',
+  '/static/app.css?v=0.21.4',
+  '/static/app.js?v=0.21.4',
+  '/static/provider_cleanup.js?v=0.21.4',
+  '/static/workflow_cleanup.js?v=0.21.4',
+  '/static/product_research.css?v=0.21.4',
+  '/static/product_research.js?v=0.21.4',
+  '/static/auto_radar.css?v=0.21.4',
+  '/static/auto_radar.js?v=0.21.4',
+  '/static/tiered_radar.css?v=0.21.4',
+  '/static/tiered_radar.js?v=0.21.4',
+  '/static/supplier_flow_v2.js?v=0.21.4',
   '/static/app-icon.svg',
   '/offline'
 ];
@@ -23,7 +22,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== SHELL).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => key !== SHELL).map(key => cache.delete(key))))
       .then(() => self.clients.claim())
   );
 });
