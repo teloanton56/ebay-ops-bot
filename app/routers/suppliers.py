@@ -7,6 +7,7 @@ from app.services.cj import CJClient
 from app.services.connections import ASSISTED_SUPPLIERS, connection_statuses
 from app.services.db import (delete_supplier, get_supplier, list_factory_leads, list_rfqs,
                              list_suppliers, list_trend_discoveries, save_supplier)
+from app.services.marketplace_supplier_sources import aliexpress_supplier_status
 from app.services.supplier_directory import SUPPLIER_DIRECTORY, search_supplier_directory
 
 router = APIRouter(prefix="/api/suppliers", tags=["Suppliers"])
@@ -54,13 +55,26 @@ def supplier_directory(q: str = Query(default="", max_length=80),
 def supplier_hub():
     connected = {row["id"]: row for row in connection_statuses()}
     cj = CJClient().status()
-    providers = [{
-        "id": "cj", "name": "CJ Dropshipping", "kind": "Catalogue dropshipping",
-        "connected": cj["connected"], "configured": cj["configured"],
-        "status": "Connecté" if cj["connected"] else "À reconnecter" if cj.get("recovery_required") else "À connecter",
-        "catalog": True, "available_in_products": cj["connected"], "url": "https://cjdropshipping.com/",
-        "note": "Catalogue, stock, variantes et devis transport en lecture seule.",
-    }]
+    amazon = connected["amazon"]
+    providers = [
+        {
+            "id": "cj", "name": "CJ Dropshipping", "kind": "Catalogue dropshipping",
+            "connected": cj["connected"], "configured": cj["configured"],
+            "status": "Connecté" if cj["connected"] else "À reconnecter" if cj.get("recovery_required") else "À connecter",
+            "catalog": True, "available_in_products": cj["connected"], "url": "https://cjdropshipping.com/",
+            "note": "Catalogue, stock, variantes et devis transport en lecture seule.",
+        },
+        {
+            **amazon,
+            "name": "Amazon France",
+            "kind": "Marketplace fournisseur",
+            "catalog": True,
+            "available_in_products": amazon["connected"],
+            "url": "https://www.amazon.fr/",
+            "note": "Catalogue et prix Amazon intégrés au comparateur fournisseur. Stock et livraison sont confirmés avant validation de marge.",
+        },
+        aliexpress_supplier_status(),
+    ]
     for provider_id in ("dropxl", "printful", "printify", "gelato"):
         row = connected[provider_id]
         providers.append({**row, "catalog": True, "available_in_products": row["connected"],

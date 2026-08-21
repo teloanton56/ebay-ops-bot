@@ -27,6 +27,35 @@
     return false;
   }
 
+  function promoteMarketplaceSuppliers(root = document) {
+    const amazon = root.querySelector?.('[data-provider-card="amazon"]');
+    if (amazon) {
+      const kicker = amazon.querySelector('.panel-kicker');
+      const paragraph = amazon.querySelector(':scope > p');
+      const note = amazon.querySelector('.policy-note');
+      if (kicker) kicker.textContent = 'RADAR + FOURNISSEUR';
+      if (paragraph) paragraph.textContent = 'Recherche catalogue et prix Amazon France, utilisables aussi dans le comparateur fournisseur.';
+      if (note) note.textContent = 'Le comparateur utilise les données observées et exige la confirmation du stock et de la livraison avant validation de marge.';
+    }
+
+    const cards = [...(root.querySelectorAll?.('.connection-card') || [])];
+    const aliexpress = cards.find(card => (card.querySelector('h2')?.textContent || '').trim().toLowerCase() === 'aliexpress');
+    if (aliexpress) {
+      aliexpress.classList.remove('policy-card');
+      const kicker = aliexpress.querySelector('.panel-kicker');
+      const badge = aliexpress.querySelector('.status-badge');
+      const paragraph = aliexpress.querySelector(':scope > p');
+      const note = aliexpress.querySelector('.policy-note');
+      if (kicker) kicker.textContent = 'FOURNISSEUR MARKETPLACE';
+      if (badge) {
+        badge.textContent = 'Disponible au sourcing';
+        badge.className = 'status-badge neutral';
+      }
+      if (paragraph) paragraph.textContent = 'AliExpress peut alimenter le sourcing et la comparaison de prix produits dans le Centre fournisseurs.';
+      if (note) note.textContent = 'Les résultats sont classés avec les autres fournisseurs. Les frais de livraison et le stock sont confirmés avant calcul final de rentabilité.';
+    }
+  }
+
   function cleanup(root = document) {
     if (root instanceof Element && removeNodeIfLegacy(root)) return;
 
@@ -37,6 +66,7 @@
     root.querySelectorAll?.(namedCardSelector).forEach(node => {
       if (hasRemovedName(node)) node.remove();
     });
+    promoteMarketplaceSuppliers(root);
   }
 
   function runCleanup() {
