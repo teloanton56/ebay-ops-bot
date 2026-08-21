@@ -6,8 +6,7 @@
   const topbarMeta = {
     overview: ['Accueil', 'Vue synthétique du flux dropshipping eBay.'],
     radar: ['Radar marché', 'Détecter et valider la demande.'],
-    suppliers: ['Fournisseurs', 'Comparer CJ, Amazon et AliExpress.'],
-    pipeline: ['Pipeline', 'Choisir une offre, contrôler marge et risques.'],
+    suppliers: ['Fournisseurs', 'Comparer CJ, Amazon et AliExpress, avec import manuel en secours.'],
     catalog: ['Produits', 'Catalogue des produits retenus.'],
     ebay: ['eBay', 'Annonces et commandes.'],
     support: ['SAV', 'Suivi client et litiges.'],
@@ -25,59 +24,56 @@
   function syncTopbar(section = currentSection()) {
     const meta = topbarMeta[section];
     if (!meta) return;
-    const title = $('#pageTitle');
-    const subtitle = $('#pageSubtitle');
-    if (title) title.textContent = meta[0];
-    if (subtitle) subtitle.textContent = meta[1];
+    if ($('#pageTitle')) $('#pageTitle').textContent = meta[0];
+    if ($('#pageSubtitle')) $('#pageSubtitle').textContent = meta[1];
   }
 
-  function removeOverviewNoise() {
+  function cleanOverview() {
     const overview = $('#section-overview');
     if (!overview) return;
     $$('.two-col > .panel', overview).forEach(panel => {
       const text = (panel.textContent || '').toLowerCase();
       if (text.includes('checklist de lancement') || text.includes('que voulez-vous faire')) panel.hidden = true;
     });
-
     const hero = overview.querySelector('.hero');
     if (hero) {
-      const eyebrow = hero.querySelector('.eyebrow');
-      const title = hero.querySelector('h1');
-      const paragraph = hero.querySelector('p');
-      if (eyebrow) eyebrow.textContent = 'AUTOMATISATION DROPSHIPPING EBAY';
-      if (title) title.textContent = 'Détecter, sourcer, valider et vendre sur eBay.';
-      if (paragraph) paragraph.textContent = 'Le bot centralise la recherche produit, compare CJ, Amazon et AliExpress, contrôle la rentabilité puis prépare le passage sur eBay.';
+      if (hero.querySelector('.eyebrow')) hero.querySelector('.eyebrow').textContent = 'AUTOMATISATION DROPSHIPPING EBAY';
+      if (hero.querySelector('h1')) hero.querySelector('h1').textContent = 'Détecter, sourcer, valider et vendre sur eBay.';
+      if (hero.querySelector('p')) hero.querySelector('p').textContent = 'Le bot détecte des opportunités, compare CJ, Amazon et AliExpress, contrôle la rentabilité puis prépare la vente sur eBay.';
       const actions = hero.querySelector('.hero-actions');
       if (actions) actions.innerHTML = '<button class="btn btn-primary" data-go="radar">1. Trouver un produit</button><button class="btn btn-secondary" data-go="suppliers">2. Comparer les fournisseurs</button>';
     }
 
-    if (!overview.querySelector('.workflow-home')) {
-      const stats = overview.querySelector('.stats-grid');
+    overview.querySelector('.workflow-home')?.remove();
+    const stats = overview.querySelector('.stats-grid');
+    if (stats && !overview.querySelector('.workflow-home')) {
       const workflow = document.createElement('article');
       workflow.className = 'panel workflow-home';
       workflow.innerHTML = `
-        <div class="panel-head"><div><span class="panel-kicker">FLUX PRINCIPAL</span><h2>Du produit à la vente eBay</h2><p>Chaque onglet correspond à une étape précise. Pas de doublon entre recherche, sourcing et exécution.</p></div></div>
+        <div class="panel-head"><div><span class="panel-kicker">FLUX PRINCIPAL</span><h2>Du produit à la vente eBay</h2><p>Un parcours simple, sans étape intermédiaire inutile.</p></div></div>
         <div class="help-flow workflow-home-flow">
           <button data-go="radar"><span>1</span><strong>Radar</strong><small>Détecter et valider la demande</small></button>
           <button data-go="suppliers"><span>2</span><strong>Fournisseurs</strong><small>CJ · Amazon · AliExpress</small></button>
-          <button data-section="pipeline"><span>3</span><strong>Pipeline</strong><small>Choisir l'offre et contrôler les risques</small></button>
-          <button data-go="catalog"><span>4</span><strong>Produits</strong><small>Catalogue des produits retenus</small></button>
-          <button data-go="ebay"><span>5</span><strong>eBay</strong><small>Annonces et commandes</small></button>
-          <button data-go="finance"><span>6</span><strong>Pilotage</strong><small>SAV, marge et résultats</small></button>
+          <button data-go="catalog"><span>3</span><strong>Produits</strong><small>Valider marge, risques et catalogue</small></button>
+          <button data-go="ebay"><span>4</span><strong>eBay</strong><small>Préparer annonces et commandes</small></button>
+          <button data-go="support"><span>5</span><strong>SAV</strong><small>Suivre les clients et litiges</small></button>
+          <button data-go="finance"><span>6</span><strong>Finance</strong><small>Suivre marges et résultats</small></button>
         </div>`;
-      stats?.insertAdjacentElement('afterend', workflow);
+      stats.insertAdjacentElement('afterend', workflow);
     }
   }
 
   function reorderNavigation() {
+    document.querySelector('[data-section="pipeline"]')?.remove();
+    document.querySelector('#section-pipeline')?.remove();
     const nav = $('.nav');
     if (!nav) return;
-    const order = ['overview', 'radar', 'suppliers', 'pipeline', 'catalog', 'ebay', 'support', 'finance', 'connections', 'settings', 'help'];
+    const order = ['overview', 'radar', 'suppliers', 'catalog', 'ebay', 'support', 'finance', 'connections', 'settings', 'help'];
     order.forEach(id => {
       const item = nav.querySelector(`[data-section="${id}"]`);
       if (item) nav.appendChild(item);
     });
-    const labels = {overview:'Accueil',radar:'Radar marché',suppliers:'Fournisseurs',pipeline:'Pipeline',catalog:'Produits',ebay:'eBay',support:'SAV',finance:'Finance',connections:'Connexions',settings:'Paramètres',help:'Aide'};
+    const labels = {overview:'Accueil',radar:'Radar marché',suppliers:'Fournisseurs',catalog:'Produits',ebay:'eBay',support:'SAV',finance:'Finance',connections:'Connexions',settings:'Paramètres',help:'Aide'};
     Object.entries(labels).forEach(([id, label]) => {
       const item = nav.querySelector(`[data-section="${id}"]`);
       const spans = item ? item.querySelectorAll('span') : [];
@@ -90,19 +86,10 @@
     if (!section) return;
     const head = section.querySelector('.section-head');
     if (head) {
-      const h1 = head.querySelector('h1');
-      const p = head.querySelector('p');
-      if (h1) h1.textContent = 'Radar marché';
-      if (p) p.textContent = 'Détectez une piste, confirmez la demande sur eBay et utilisez Amazon comme signal complémentaire. Le sourcing se fait ensuite dans Fournisseurs.';
+      if (head.querySelector('h1')) head.querySelector('h1').textContent = 'Radar marché';
+      if (head.querySelector('p')) head.querySelector('p').textContent = 'Détectez une piste et confirmez la demande avant de passer au sourcing.';
     }
     section.querySelector('input[name="radar_source"][value="etsy"]')?.closest('label')?.remove();
-    const legend = section.querySelector('.radar-signal-panel legend');
-    if (legend) legend.textContent = 'Sources de tendance connectées';
-    const signalHead = section.querySelector('.radar-signal-panel h2');
-    if (signalHead) signalHead.textContent = 'Confirmer une piste sur les signaux disponibles';
-    section.querySelector('.radar-signal-panel .help-tip')?.remove();
-    const amazonLegend = section.querySelector('.amazon-markets legend');
-    if (amazonLegend) amazonLegend.childNodes[0].textContent = 'Amazon — signal marché complémentaire ';
   }
 
   function cleanSuppliers() {
@@ -110,21 +97,16 @@
     if (!section) return;
     const head = section.querySelector('.section-head');
     if (head) {
-      const eyebrow = head.querySelector('.eyebrow');
-      const h1 = head.querySelector('h1');
-      const p = head.querySelector('p');
-      if (eyebrow) eyebrow.textContent = 'SOURCING';
-      if (h1) h1.textContent = 'Fournisseurs';
-      if (p) p.textContent = 'Recherchez et comparez uniquement CJ Dropshipping, Amazon et AliExpress.';
+      if (head.querySelector('.eyebrow')) head.querySelector('.eyebrow').textContent = 'SOURCING';
+      if (head.querySelector('h1')) head.querySelector('h1').textContent = 'Fournisseurs';
+      if (head.querySelector('p')) head.querySelector('p').textContent = 'Comparez CJ Dropshipping, Amazon et AliExpress. Ajoutez un fournisseur manuel ou un CSV seulement si nécessaire.';
       head.querySelector('[data-action="add-supplier"]')?.remove();
     }
     section.querySelector('#supplierKpis')?.remove();
-    const kicker = section.querySelector('.supplier-match-panel .panel-kicker');
-    if (kicker) kicker.textContent = 'COMPARATEUR GLOBAL';
-    const matchTitle = section.querySelector('.supplier-match-panel h2');
-    const matchText = section.querySelector('.supplier-match-panel p');
-    if (matchTitle) matchTitle.textContent = 'Comparer CJ, Amazon et AliExpress';
-    if (matchText) matchText.textContent = 'Une seule recherche interroge les trois fournisseurs connectés et regroupe les offres disponibles.';
+    const title = section.querySelector('.supplier-match-panel h2');
+    const text = section.querySelector('.supplier-match-panel p');
+    if (title) title.textContent = 'Comparer CJ, Amazon et AliExpress';
+    if (text) text.textContent = 'Une seule recherche interroge les trois fournisseurs connectés.';
   }
 
   function cleanProducts() {
@@ -133,44 +115,32 @@
     section.querySelector('.opportunity-inbox')?.remove();
     const head = section.querySelector('.section-head');
     if (head) {
-      const eyebrow = head.querySelector('.eyebrow');
-      const h1 = head.querySelector('h1');
-      const p = head.querySelector('p');
-      if (eyebrow) eyebrow.textContent = 'CATALOGUE VALIDÉ';
-      if (h1) h1.textContent = 'Produits';
-      if (p) p.textContent = 'Retrouvez uniquement les produits retenus après sourcing et validation du Pipeline.';
+      if (head.querySelector('.eyebrow')) head.querySelector('.eyebrow').textContent = 'CATALOGUE VALIDÉ';
+      if (head.querySelector('h1')) head.querySelector('h1').textContent = 'Produits';
+      if (head.querySelector('p')) head.querySelector('p').textContent = 'Validez ici les produits sourcés : marge, stock, délai, risques et préparation eBay.';
       head.querySelector('[data-action="load-demo"]')?.remove();
     }
   }
 
   function cleanEbay() {
     const section = $('#section-ebay');
-    if (!section) return;
-    const head = section.querySelector('.section-head');
-    if (head) {
-      const eyebrow = head.querySelector('.eyebrow');
-      const h1 = head.querySelector('h1');
-      const p = head.querySelector('p');
-      if (eyebrow) eyebrow.textContent = 'EXÉCUTION EBAY';
-      if (h1) h1.textContent = 'eBay';
-      if (p) p.textContent = 'Préparez les annonces retenues et suivez les commandes issues d’eBay.';
-    }
+    const head = section?.querySelector('.section-head');
+    if (!head) return;
+    if (head.querySelector('.eyebrow')) head.querySelector('.eyebrow').textContent = 'EXÉCUTION EBAY';
+    if (head.querySelector('h1')) head.querySelector('h1').textContent = 'eBay';
+    if (head.querySelector('p')) head.querySelector('p').textContent = 'Préparez les annonces retenues et suivez les commandes eBay.';
   }
 
   function cleanConnections() {
     const section = $('#section-connections');
-    if (!section) return;
-    const head = section.querySelector('.section-head');
-    if (head) {
-      const h1 = head.querySelector('h1');
-      const p = head.querySelector('p');
-      if (h1) h1.textContent = 'Connexions';
-      if (p) p.textContent = 'Connectez eBay et les services réellement utilisés par le bot. Les fournisseurs actifs sont CJ, Amazon et AliExpress.';
-    }
+    const head = section?.querySelector('.section-head');
+    if (!head) return;
+    if (head.querySelector('h1')) head.querySelector('h1').textContent = 'Connexions';
+    if (head.querySelector('p')) head.querySelector('p').textContent = 'Connectez eBay, CJ, Amazon, AliExpress et les sources utilisées par le Radar.';
   }
 
   function apply() {
-    removeOverviewNoise();
+    cleanOverview();
     reorderNavigation();
     cleanRadar();
     cleanSuppliers();
