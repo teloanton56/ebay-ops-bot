@@ -3,12 +3,12 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier_offers
 from app.services.cj import CJClient
 from app.services.connections import connection_statuses
 from app.services.db import (delete_supplier, get_supplier, list_factory_leads, list_rfqs,
                              list_suppliers, list_trend_discoveries, save_supplier)
 from app.services.marketplace_supplier_sources import (
-    aliexpress_supplier_offers,
     aliexpress_supplier_status,
     amazon_supplier_offers,
 )
@@ -112,7 +112,7 @@ async def source_search(provider: str = Query(pattern="^(amazon|aliexpress)$"),
         if not offers and not errors:
             raise HTTPException(400, "Amazon n'est pas connecté dans l'onglet Connexions")
     else:
-        offers, errors = await aliexpress_supplier_offers(keyword)
+        offers, errors = await aliexpress_dropship_supplier_offers(keyword)
         if not offers and not errors:
             raise HTTPException(400, "AliExpress n'est pas connecté dans l'onglet Connexions")
     if not offers and errors:
