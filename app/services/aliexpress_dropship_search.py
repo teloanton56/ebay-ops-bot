@@ -86,7 +86,7 @@ class AliExpressDropshipSearchClient:
         return payload
 
     async def search(self, keyword: str, page_size: int = 10) -> list[dict[str, Any]]:
-        payload = await self._call(ALiexpress_TEXT_SEARCH_METHOD if False else ALIEXPRESS_TEXT_SEARCH_METHOD, {
+        payload = await self._call(ALIEXPRESS_TEXT_SEARCH_METHOD, {
             "keyword": keyword,
             "countryCode": "FR",
             "currency": "EUR",
