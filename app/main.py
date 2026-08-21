@@ -15,7 +15,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.15.1"
+VERSION = "0.15.2"
 
 
 @asynccontextmanager
@@ -101,6 +101,14 @@ def dashboard(request: Request):
         "version": VERSION,
     }
     html = templates.get_template("dashboard.html").render(context)
+    html = html.replace(
+        "L'environnement reste verrouillé sur Sandbox.",
+        "Utilisez le keyset correspondant à l'environnement choisi. Production est disponible avec vos clés live.",
+    )
+    html = html.replace(
+        '<option value="production" disabled>Production (plus tard)</option>',
+        '<option value="production">Production</option>',
+    )
     html = html.replace(
         "</head>",
         f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n</head>',
