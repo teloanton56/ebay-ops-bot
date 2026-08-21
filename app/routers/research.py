@@ -13,7 +13,7 @@ def _fail(exc: EbayError):
 
 def _require_real_market():
     settings = get_settings()
-    if settings.ebay_env != "production" or not settings.ebay_client_id or not settings.ebay_client_secret:
+    if settings.ebay_effective_env != "production" or not settings.ebay_client_id or not settings.ebay_client_secret:
         raise HTTPException(400, "Connectez des clés eBay Production pour obtenir des données de marché réelles. Aucune donnée simulée n'est générée.")
     return settings
 
