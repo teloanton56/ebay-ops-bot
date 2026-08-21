@@ -1,17 +1,15 @@
-const SHELL = 'opsbot-v0.20.0-shell';
+const SHELL = 'opsbot-v0.21.0-shell';
 const ASSETS = [
-  '/static/app.css?v=0.20.0',
-  '/static/app.js?v=0.20.0',
-  '/static/provider_cleanup.js?v=0.20.0',
-  '/static/workflow_cleanup.js?v=0.20.0',
-  '/static/product_research.css?v=0.20.0',
-  '/static/product_research.js?v=0.20.0',
-  '/static/auto_radar.css?v=0.20.0',
-  '/static/auto_radar.js?v=0.20.0',
-  '/static/tiered_radar.css?v=0.20.0',
-  '/static/tiered_radar.js?v=0.20.0',
-  '/static/opportunity_center.css?v=0.20.0',
-  '/static/opportunity_center.js?v=0.20.0',
+  '/static/app.css?v=0.21.0',
+  '/static/app.js?v=0.21.0',
+  '/static/provider_cleanup.js?v=0.21.0',
+  '/static/workflow_cleanup.js?v=0.21.0',
+  '/static/product_research.css?v=0.21.0',
+  '/static/product_research.js?v=0.21.0',
+  '/static/auto_radar.css?v=0.21.0',
+  '/static/auto_radar.js?v=0.21.0',
+  '/static/tiered_radar.css?v=0.21.0',
+  '/static/tiered_radar.js?v=0.21.0',
   '/static/app-icon.svg',
   '/offline'
 ];
