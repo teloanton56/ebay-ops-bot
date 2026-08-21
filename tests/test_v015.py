@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.services.radar import build_product_research_summary
+from app.services.product_research import build_product_research_summary
 
 
 def test_product_research_combines_measured_market_signals():
