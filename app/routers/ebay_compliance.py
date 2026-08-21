@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.services.ebay_compliance import (
@@ -24,7 +24,12 @@ def verify_account_deletion_endpoint(
 
 
 @router.post(ENDPOINT_PATH, status_code=204)
-async def receive_account_deletion_notification(request: Request):
+async def receive_account_deletion_notification(
+    request: Request,
+    x_ebay_signature: str | None = Header(default=None),
+):
+    if not x_ebay_signature:
+        raise HTTPException(status_code=412, detail="Signature eBay manquante")
     try:
         payload = await request.json()
     except Exception as exc:
