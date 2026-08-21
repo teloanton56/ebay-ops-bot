@@ -11,7 +11,6 @@ def test_pipeline_frontend_removed():
     assert 'ensurePipelineSection' not in provider
     assert "pipeline:" not in workflow
     assert "'pipeline', 'catalog'" not in workflow
-    # Selectors that remove stale/cached Pipeline DOM are allowed and intentional.
     assert "document.querySelector('[data-section=\"pipeline\"]')?.remove()" in workflow
     assert "document.querySelector('#section-pipeline')?.remove()" in workflow
 
@@ -29,7 +28,7 @@ def test_current_version_keeps_pipeline_assets_out_of_pwa():
     main = Path('app/main.py').read_text(encoding='utf-8')
     worker = Path('app/static/service-worker.js').read_text(encoding='utf-8')
 
-    assert 'VERSION = "0.21.9"' in main
-    assert "opsbot-v0.21.9-shell" in worker
+    assert 'VERSION = "0.21.10"' in main
+    assert "opsbot-v0.21.10-shell" in worker
     assert 'opportunity_center.js' not in worker
     assert 'opportunity_center.css' not in worker
