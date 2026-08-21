@@ -3,30 +3,53 @@
 
   const removedProviders = new Set(['printful', 'printify', 'gelato']);
   const removedNames = ['printful', 'printify', 'gelato'];
+  const namedCardSelector = '.radar-source, .provider-card, .supplier-provider-card, .directory-card, .connection-card';
 
-  function removeLegacyProviderCards(root = document) {
-    removedProviders.forEach(provider => {
-      root.querySelectorAll?.(`[data-provider-card="${provider}"]`).forEach(node => node.remove());
-    });
+  function hasRemovedName(node) {
+    const text = (node.textContent || '').trim().toLowerCase();
+    return removedNames.some(name => text.includes(name));
   }
 
-  function removeNamedProviderCards(root = document) {
-    const selectors = ['.radar-source', '.provider-card', '.supplier-provider-card', '.directory-card', '.connection-card'];
-    root.querySelectorAll?.(selectors.join(',')).forEach(node => {
-      const text = (node.textContent || '').trim().toLowerCase();
-      if (removedNames.some(name => text.includes(name))) node.remove();
-    });
+  function removeNodeIfLegacy(node) {
+    if (!(node instanceof Element)) return false;
+
+    const provider = (node.getAttribute('data-provider-card') || '').toLowerCase();
+    if (removedProviders.has(provider)) {
+      node.remove();
+      return true;
+    }
+
+    if (node.matches(namedCardSelector) && hasRemovedName(node)) {
+      node.remove();
+      return true;
+    }
+
+    return false;
   }
 
   function cleanup(root = document) {
-    removeLegacyProviderCards(root);
-    removeNamedProviderCards(root);
+    if (root instanceof Element && removeNodeIfLegacy(root)) return;
+
+    removedProviders.forEach(provider => {
+      root.querySelectorAll?.(`[data-provider-card="${provider}"]`).forEach(node => node.remove());
+    });
+
+    root.querySelectorAll?.(namedCardSelector).forEach(node => {
+      if (hasRemovedName(node)) node.remove();
+    });
+  }
+
+  function runCleanup() {
+    cleanup(document);
+    requestAnimationFrame(() => cleanup(document));
+    setTimeout(() => cleanup(document), 250);
+    setTimeout(() => cleanup(document), 1000);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => cleanup());
+    document.addEventListener('DOMContentLoaded', runCleanup, { once: true });
   } else {
-    cleanup();
+    runCleanup();
   }
 
   const observer = new MutationObserver(records => {
