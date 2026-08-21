@@ -112,12 +112,27 @@ class Settings:
         return self.app_access_mode.strip().lower() == "cloud"
 
     @property
+    def ebay_effective_env(self) -> str:
+        """Prefer the environment encoded in an eBay App ID over a stale UI setting.
+
+        eBay issues separate keysets for Sandbox and Production. Production App IDs
+        contain `-PRD-` and Sandbox App IDs contain `-SBX-`. This prevents a valid
+        Production key from ever being sent to the Sandbox OAuth host (and vice versa).
+        """
+        client_id = self.ebay_client_id.strip().upper()
+        if "-PRD-" in client_id:
+            return "production"
+        if "-SBX-" in client_id:
+            return "sandbox"
+        return "production" if self.ebay_env == "production" else "sandbox"
+
+    @property
     def ebay_api_base(self) -> str:
-        return "https://api.sandbox.ebay.com" if self.ebay_env == "sandbox" else "https://api.ebay.com"
+        return "https://api.sandbox.ebay.com" if self.ebay_effective_env == "sandbox" else "https://api.ebay.com"
 
     @property
     def ebay_auth_base(self) -> str:
-        return "https://auth.sandbox.ebay.com" if self.ebay_env == "sandbox" else "https://auth.ebay.com"
+        return "https://auth.sandbox.ebay.com" if self.ebay_effective_env == "sandbox" else "https://auth.ebay.com"
 
     @property
     def ebay_oauth_scopes(self) -> list[str]:
