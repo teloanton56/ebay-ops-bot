@@ -1,5 +1,5 @@
-const SHELL = 'opsbot-v0.14.3-shell';
-const ASSETS = ['/static/app.css?v=0.14.3', '/static/app.js?v=0.14.3', '/static/app-icon.svg', '/offline'];
+const SHELL = 'opsbot-v0.14.5-shell';
+const ASSETS = ['/static/app.css?v=0.14.5', '/static/app.js?v=0.14.5', '/static/provider_cleanup.js?v=0.14.5', '/static/app-icon.svg', '/offline'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(SHELL).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
