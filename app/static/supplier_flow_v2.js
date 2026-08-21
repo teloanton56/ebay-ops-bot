@@ -8,6 +8,18 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[char]));
 
+  function ensureLegacyCompatibility() {
+    const ids = ['supplierDirectoryNote', 'supplierDirectoryResults'];
+    ids.forEach(id => {
+      if (document.getElementById(id)) return;
+      const node = document.createElement('div');
+      node.id = id;
+      node.hidden = true;
+      node.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(node);
+    });
+  }
+
   function money(value, currency = 'EUR') {
     if (value === null || value === undefined || value === '') return 'Prix à vérifier';
     const amount = Number(value);
@@ -102,7 +114,8 @@
       if (!response.ok) throw new Error(data.detail || `Erreur ${response.status}`);
       button.textContent = 'Ajouté ✓';
       button.classList.remove('primary');
-      if (typeof window.refreshAll === 'function') window.refreshAll();
+      button.title = `Produit #${data.product_id} ajouté au dashboard Produits`;
+      ensureLegacyCompatibility();
     } catch (error) {
       button.disabled = false;
       button.textContent = previous;
@@ -161,7 +174,10 @@
     }
   });
 
-  const run = () => enhanceCatalogResults();
+  const run = () => {
+    ensureLegacyCompatibility();
+    enhanceCatalogResults();
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once: true});
   else run();
   setTimeout(run, 500);
