@@ -4,10 +4,14 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.cj import CJClient
-from app.services.connections import ASSISTED_SUPPLIERS, connection_statuses
+from app.services.connections import connection_statuses
 from app.services.db import (delete_supplier, get_supplier, list_factory_leads, list_rfqs,
                              list_suppliers, list_trend_discoveries, save_supplier)
-from app.services.marketplace_supplier_sources import aliexpress_supplier_status
+from app.services.marketplace_supplier_sources import (
+    aliexpress_supplier_offers,
+    aliexpress_supplier_status,
+    amazon_supplier_offers,
+)
 from app.services.supplier_directory import SUPPLIER_DIRECTORY, search_supplier_directory
 
 router = APIRouter(prefix="/api/suppliers", tags=["Suppliers"])
@@ -71,16 +75,10 @@ def supplier_hub():
             "catalog": True,
             "available_in_products": amazon["connected"],
             "url": "https://www.amazon.fr/",
-            "note": "Catalogue et prix Amazon intégrés au comparateur fournisseur. Stock et livraison sont confirmés avant validation de marge.",
+            "note": "Catalogue et prix Amazon intégrés au sourcing.",
         },
         aliexpress_supplier_status(),
     ]
-    for provider_id in ("dropxl", "printful", "printify", "gelato"):
-        row = connected[provider_id]
-        providers.append({**row, "catalog": True, "available_in_products": row["connected"],
-                          "url": row["docs_url"]})
-    providers.extend([{**row, "connected": False, "configured": False, "catalog": True,
-                       "available_in_products": False} for row in ASSISTED_SUPPLIERS])
     manual, factories, rfqs = list_suppliers(), list_factory_leads(), list_rfqs()
     return {
         "providers": providers, "manual": manual, "factories": factories, "rfqs": rfqs,
@@ -91,6 +89,26 @@ def supplier_hub():
         },
         "dry_run": True,
     }
+
+
+@router.get("/source-search")
+async def source_search(provider: str = Query(pattern="^(amazon|aliexpress)$"),
+                        q: str = Query(min_length=2, max_length=120)):
+    keyword = q.strip()
+    if len(keyword) < 2:
+        raise HTTPException(400, "Mot-clé trop court")
+    if provider == "amazon":
+        offers, errors = await amazon_supplier_offers(keyword)
+        if not offers and not errors:
+            raise HTTPException(400, "Amazon n'est pas connecté dans l'onglet Connexions")
+    else:
+        offers, errors = await aliexpress_supplier_offers(keyword)
+        if not offers and not errors:
+            raise HTTPException(400, "Les clés API AliExpress ne sont pas configurées sur le serveur")
+    if not offers and errors:
+        raise HTTPException(400, errors[0]["message"])
+    return {"provider": provider, "keyword": keyword, "offers": offers, "errors": errors,
+            "measured_only": True}
 
 
 @router.post("/factory-discovery")

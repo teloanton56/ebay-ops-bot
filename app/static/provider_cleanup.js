@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const removedProviders = new Set(['printful', 'printify', 'gelato']);
-  const removedNames = ['printful', 'printify', 'gelato'];
+  const removedProviders = new Set(['printful', 'printify', 'gelato', 'dropxl', 'etsy']);
+  const removedNames = ['printful', 'printify', 'gelato', 'dropxl', 'vidaxl'];
   const namedCardSelector = '.radar-source, .provider-card, .supplier-provider-card, .directory-card, .connection-card';
 
   function hasRemovedName(node) {
@@ -12,82 +12,208 @@
 
   function removeNodeIfLegacy(node) {
     if (!(node instanceof Element)) return false;
-
     const provider = (node.getAttribute('data-provider-card') || '').toLowerCase();
     if (removedProviders.has(provider)) {
       node.remove();
       return true;
     }
-
     if (node.matches(namedCardSelector) && hasRemovedName(node)) {
       node.remove();
       return true;
     }
-
     return false;
   }
 
-  function promoteMarketplaceSuppliers(root = document) {
-    const amazon = root.querySelector?.('[data-provider-card="amazon"]');
-    if (amazon) {
-      const kicker = amazon.querySelector('.panel-kicker');
-      const paragraph = amazon.querySelector(':scope > p');
-      const note = amazon.querySelector('.policy-note');
-      if (kicker) kicker.textContent = 'RADAR + FOURNISSEUR';
-      if (paragraph) paragraph.textContent = 'Recherche catalogue et prix Amazon France, utilisables aussi dans le comparateur fournisseur.';
-      if (note) note.textContent = 'Le comparateur utilise les données observées et exige la confirmation du stock et de la livraison avant validation de marge.';
+  function removeUnwantedSections() {
+    document.querySelectorAll('[data-provider-card="etsy"],[data-provider-card="dropxl"]').forEach(node => node.remove());
+
+    const connectionHeads = [...document.querySelectorAll('#section-connections .connection-group-head')];
+    connectionHeads.forEach(head => {
+      const label = (head.textContent || '').toLowerCase();
+      if (label.includes('accès à obtenir') || label.includes('fournisseurs accompagnés') || label.includes('usines')) {
+        let node = head.nextElementSibling;
+        head.remove();
+        while (node && !node.classList.contains('connection-group-head')) {
+          const next = node.nextElementSibling;
+          node.remove();
+          node = next;
+        }
+      }
+    });
+
+    document.querySelector('#section-ebay .sales-channel-panel')?.remove();
+    document.querySelector('#section-suppliers .supplier-network')?.remove();
+    document.querySelector('#section-suppliers .niche-directory-panel')?.remove();
+    document.querySelector('#section-suppliers .supplier-directory')?.remove();
+    document.querySelector('#section-suppliers .factory-discovery-panel')?.remove();
+    document.querySelector('#section-suppliers .radar-factory-grid')?.remove();
+    document.querySelectorAll('#section-suppliers .subsection-head').forEach(head => {
+      if ((head.textContent || '').toLowerCase().includes('sourcing direct')) head.remove();
+    });
+
+    const radarConnectionPanel = document.querySelector('#section-radar #radarSources')?.closest('.panel');
+    radarConnectionPanel?.remove();
+  }
+
+  function ensurePipelineSection() {
+    if (!document.querySelector('[data-section="pipeline"]')) {
+      const radarNav = document.querySelector('[data-section="radar"]');
+      if (radarNav) {
+        const button = document.createElement('button');
+        button.className = 'nav-item';
+        button.dataset.section = 'pipeline';
+        button.innerHTML = '<span class="nav-icon">⇢</span><span>Pipeline</span>';
+        radarNav.insertAdjacentElement('afterend', button);
+      }
     }
 
-    const cards = [...(root.querySelectorAll?.('.connection-card') || [])];
-    const aliexpress = cards.find(card => (card.querySelector('h2')?.textContent || '').trim().toLowerCase() === 'aliexpress');
-    if (aliexpress) {
-      aliexpress.classList.remove('policy-card');
-      const kicker = aliexpress.querySelector('.panel-kicker');
-      const badge = aliexpress.querySelector('.status-badge');
-      const paragraph = aliexpress.querySelector(':scope > p');
-      const note = aliexpress.querySelector('.policy-note');
-      if (kicker) kicker.textContent = 'FOURNISSEUR MARKETPLACE';
-      if (badge) {
-        badge.textContent = 'Disponible au sourcing';
-        badge.className = 'status-badge neutral';
-      }
-      if (paragraph) paragraph.textContent = 'AliExpress peut alimenter le sourcing et la comparaison de prix produits dans le Centre fournisseurs.';
-      if (note) note.textContent = 'Les résultats sont classés avec les autres fournisseurs. Les frais de livraison et le stock sont confirmés avant calcul final de rentabilité.';
+    if (!document.querySelector('#section-pipeline')) {
+      const main = document.querySelector('main.content');
+      const section = document.createElement('section');
+      section.id = 'section-pipeline';
+      section.className = 'page-section';
+      section.innerHTML = '<div class="section-head row-between"><div><span class="eyebrow">PIPELINE</span><h1>Pipeline</h1><p>De l’opportunité au brouillon eBay, dans un espace dédié.</p></div></div><div id="pipelineHost"></div>';
+      main?.appendChild(section);
     }
+
+    const panel = document.querySelector('#opportunityCenterPanel');
+    const host = document.querySelector('#pipelineHost');
+    if (panel && host && panel.parentElement !== host) host.appendChild(panel);
+  }
+
+  function activatePipeline() {
+    document.querySelectorAll('.page-section').forEach(section => section.classList.toggle('active', section.id === 'section-pipeline'));
+    document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.section === 'pipeline'));
+    const title = document.querySelector('#pageTitle');
+    const subtitle = document.querySelector('#pageSubtitle');
+    if (title) title.textContent = 'Pipeline';
+    if (subtitle) subtitle.textContent = 'Opportunités, fournisseurs, risques et brouillons.';
+    document.querySelector('.sidebar')?.classList.remove('open');
+    history.replaceState(null, '', '#pipeline');
+  }
+
+  function setupPipelineNavigation() {
+    document.addEventListener('click', event => {
+      const button = event.target.closest('[data-section="pipeline"]');
+      if (!button) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      ensurePipelineSection();
+      activatePipeline();
+    }, true);
+    if (location.hash === '#pipeline') setTimeout(activatePipeline, 0);
+  }
+
+  function cardHtml(provider) {
+    return `<article class="panel supplier-api-panel" data-supplier-pane="${provider}"><form class="search-form supplier-api-search" data-supplier-source="${provider}"><span>⌕</span><input required placeholder="Rechercher un produit sur ${provider === 'amazon' ? 'Amazon' : 'AliExpress'}"><button class="btn btn-primary">Rechercher</button></form><div class="supplier-api-results empty-state compact"><strong>Aucune recherche lancée</strong><span>Les résultats de ce fournisseur apparaîtront ici.</span></div></article>`;
+  }
+
+  function renderSupplierResults(area, data) {
+    const offers = data.offers || [];
+    if (!offers.length) {
+      area.className = 'supplier-api-results empty-state compact';
+      area.innerHTML = `<strong>Aucun résultat</strong><span>${data.message || 'Aucune offre trouvée.'}</span>`;
+      return;
+    }
+    area.className = 'supplier-api-results cj-product-grid';
+    area.innerHTML = offers.map(item => {
+      const price = item.product_cost == null ? '—' : `${Number(item.product_cost).toFixed(2)} ${item.currency || 'EUR'}`;
+      const image = item.image_url ? `<img src="${item.image_url}" alt="" loading="lazy">` : '<div class="image-placeholder">API</div>';
+      const link = item.source_url ? `<a class="mini-btn" href="${item.source_url}" target="_blank" rel="noopener">Voir le produit ↗</a>` : '';
+      return `<article class="cj-card">${image}<div class="cj-card-body"><h3>${item.name || 'Produit'}</h3><div class="cj-price">${price}</div><div class="cj-card-meta"><span>Stock ${item.stock ?? '—'}</span><span>${item.shipping_days ?? '—'} j</span><span>${item.warehouse || 'Entrepôt inconnu'}</span></div>${link}</div></article>`;
+    }).join('');
+  }
+
+  function setupSupplierTabs() {
+    const section = document.querySelector('#section-suppliers');
+    if (!section || section.querySelector('.supplier-api-tabs')) return;
+
+    const cjHeading = [...section.querySelectorAll('.subsection-head')].find(head => (head.textContent || '').includes('CJ Dropshipping'));
+    const cjSearch = document.querySelector('#cjSearchForm')?.closest('.search-panel');
+    const cjLayout = document.querySelector('.cj-layout');
+    if (!cjSearch || !cjLayout) return;
+
+    const tabs = document.createElement('div');
+    tabs.className = 'supplier-api-tabs';
+    tabs.innerHTML = '<button class="btn btn-secondary active" data-supplier-tab="cj">CJ</button><button class="btn btn-secondary" data-supplier-tab="amazon">Amazon</button><button class="btn btn-secondary" data-supplier-tab="aliexpress">AliExpress</button>';
+    cjHeading?.insertAdjacentElement('beforebegin', tabs);
+
+    const cjPane = document.createElement('div');
+    cjPane.dataset.supplierPane = 'cj';
+    cjSearch.insertAdjacentElement('beforebegin', cjPane);
+    if (cjHeading) cjPane.appendChild(cjHeading);
+    cjPane.appendChild(cjSearch);
+    cjPane.appendChild(cjLayout);
+
+    const amazonWrap = document.createElement('div');
+    amazonWrap.innerHTML = cardHtml('amazon');
+    const amazonPane = amazonWrap.firstElementChild;
+    amazonPane.hidden = true;
+    cjPane.insertAdjacentElement('afterend', amazonPane);
+
+    const aliWrap = document.createElement('div');
+    aliWrap.innerHTML = cardHtml('aliexpress');
+    const aliPane = aliWrap.firstElementChild;
+    aliPane.hidden = true;
+    amazonPane.insertAdjacentElement('afterend', aliPane);
+
+    tabs.addEventListener('click', event => {
+      const button = event.target.closest('[data-supplier-tab]');
+      if (!button) return;
+      const selected = button.dataset.supplierTab;
+      tabs.querySelectorAll('[data-supplier-tab]').forEach(tab => tab.classList.toggle('active', tab === button));
+      section.querySelectorAll('[data-supplier-pane]').forEach(pane => pane.hidden = pane.dataset.supplierPane !== selected);
+    });
+
+    section.querySelectorAll('.supplier-api-search').forEach(form => form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const source = form.dataset.supplierSource;
+      const query = form.querySelector('input').value.trim();
+      const area = form.parentElement.querySelector('.supplier-api-results');
+      area.className = 'supplier-api-results loading';
+      area.textContent = 'Recherche en cours…';
+      try {
+        const response = await fetch(`/api/suppliers/source-search?provider=${encodeURIComponent(source)}&q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Erreur ${response.status}`);
+        renderSupplierResults(area, data);
+      } catch (error) {
+        area.className = 'supplier-api-results error-box';
+        area.textContent = error.message;
+      }
+    }));
   }
 
   function cleanup(root = document) {
     if (root instanceof Element && removeNodeIfLegacy(root)) return;
-
-    removedProviders.forEach(provider => {
-      root.querySelectorAll?.(`[data-provider-card="${provider}"]`).forEach(node => node.remove());
-    });
-
-    root.querySelectorAll?.(namedCardSelector).forEach(node => {
-      if (hasRemovedName(node)) node.remove();
-    });
-    promoteMarketplaceSuppliers(root);
+    removedProviders.forEach(provider => root.querySelectorAll?.(`[data-provider-card="${provider}"]`).forEach(node => node.remove()));
+    root.querySelectorAll?.(namedCardSelector).forEach(node => { if (hasRemovedName(node)) node.remove(); });
   }
 
   function runCleanup() {
     cleanup(document);
-    requestAnimationFrame(() => cleanup(document));
-    setTimeout(() => cleanup(document), 250);
-    setTimeout(() => cleanup(document), 1000);
+    removeUnwantedSections();
+    ensurePipelineSection();
+    setupSupplierTabs();
+    setTimeout(() => {
+      cleanup(document);
+      removeUnwantedSections();
+      ensurePipelineSection();
+      setupSupplierTabs();
+    }, 300);
+    setTimeout(() => {
+      ensurePipelineSection();
+      setupSupplierTabs();
+    }, 1200);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', runCleanup, { once: true });
-  } else {
-    runCleanup();
-  }
+  setupPipelineNavigation();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', runCleanup, { once: true });
+  else runCleanup();
 
-  const observer = new MutationObserver(records => {
-    for (const record of records) {
-      for (const node of record.addedNodes) {
-        if (node.nodeType === Node.ELEMENT_NODE) cleanup(node);
-      }
-    }
+  const observer = new MutationObserver(() => {
+    cleanup(document);
+    ensurePipelineSection();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 })();
