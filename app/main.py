@@ -16,7 +16,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.21.7"
+VERSION = "0.21.8"
 # Compatibility baseline retained: v0.14.3 introduced the simplified real-data dashboard.
 
 
@@ -122,39 +122,44 @@ def dashboard(request: Request):
         ),
     )
     html = html.replace(
-        "</body>",
+        '<script src="/static/app.js"></script>',
         (
-            "<!-- Compatibility baseline v0.14.3: simplified real-data dashboard -->\n"
-            f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/workflow_cleanup.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/auto_radar.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/tiered_radar.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/supplier_flow_v2.js?v={VERSION}" defer></script>\n'
-            "</body>"
+            f'<script src="/static/app.js?v={VERSION}"></script>\n'
+            f'<script src="/static/provider_cleanup.js?v={VERSION}"></script>\n'
+            f'<script src="/static/workflow_cleanup.js?v={VERSION}"></script>\n'
+            f'<script src="/static/product_research.js?v={VERSION}"></script>\n'
+            f'<script src="/static/auto_radar.js?v={VERSION}"></script>\n'
+            f'<script src="/static/tiered_radar.js?v={VERSION}"></script>\n'
+            f'<script src="/static/supplier_flow_v2.js?v={VERSION}"></script>'
         ),
     )
     return HTMLResponse(html)
 
 
+@app.get("/offline", response_class=HTMLResponse)
+def offline():
+    return HTMLResponse("""<!doctype html><html lang=\"fr\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Hors ligne</title><body style=\"font-family:system-ui;padding:40px;background:#f6f8fc;color:#111827\"><h1>Connexion indisponible</h1><p>Le bot nécessite une connexion réseau pour lire les données eBay et fournisseurs.</p></body></html>""")
+
+
 @app.get("/manifest.webmanifest")
 def manifest():
-    return FileResponse("app/static/manifest.webmanifest", media_type="application/manifest+json")
+    return JSONResponse({
+        "name": "eBay Ops Bot", "short_name": "Ops Bot", "start_url": "/", "display": "standalone",
+        "background_color": "#f4f7fb", "theme_color": "#0f172a",
+        "icons": [{"src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml"}],
+    }, media_type="application/manifest+json")
 
 
 @app.get("/service-worker.js")
 def service_worker():
-    return FileResponse("app/static/service-worker.js", media_type="application/javascript",
-                        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
-
-
-@app.get("/offline", response_class=HTMLResponse)
-def offline():
-    return FileResponse("app/static/offline.html", media_type="text/html; charset=utf-8")
+    response = FileResponse("app/static/service-worker.js", media_type="application/javascript")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
 
 
 @app.get("/sample_supplier.csv")
-def sample_supplier_csv():
+def supplier_csv_template():
     return FileResponse(
         "sample_supplier.csv",
         media_type="text/csv; charset=utf-8",
