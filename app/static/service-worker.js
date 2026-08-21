@@ -1,18 +1,19 @@
-const SHELL = 'opsbot-v0.21.10-shell';
+const SHELL = 'opsbot-v0.21.11-shell';
 const ASSETS = [
-  '/static/app.css?v=0.21.10',
-  '/static/app.js?v=0.21.10',
-  '/static/provider_cleanup.js?v=0.21.10',
-  '/static/workflow_cleanup.js?v=0.21.10',
-  '/static/product_research.css?v=0.21.10',
-  '/static/product_research.js?v=0.21.10',
-  '/static/auto_radar.css?v=0.21.10',
-  '/static/auto_radar.js?v=0.21.10',
-  '/static/tiered_radar.css?v=0.21.10',
-  '/static/tiered_radar.js?v=0.21.10',
-  '/static/supplier_flow_v2.js?v=0.21.10',
-  '/static/margin_hunter.js?v=0.21.10',
-  '/static/catalog_sync.js?v=0.21.10',
+  '/static/app.css?v=0.21.11',
+  '/static/app.js?v=0.21.11',
+  '/static/provider_cleanup.js?v=0.21.11',
+  '/static/workflow_cleanup.js?v=0.21.11',
+  '/static/product_research.css?v=0.21.11',
+  '/static/product_research.js?v=0.21.11',
+  '/static/auto_radar.css?v=0.21.11',
+  '/static/auto_radar.js?v=0.21.11',
+  '/static/tiered_radar.css?v=0.21.11',
+  '/static/tiered_radar.js?v=0.21.11',
+  '/static/supplier_flow_v2.js?v=0.21.11',
+  '/static/margin_hunter.js?v=0.21.11',
+  '/static/shop_spy.js?v=0.21.11',
+  '/static/catalog_sync.js?v=0.21.11',
   '/static/app-icon.svg',
   '/offline'
 ];

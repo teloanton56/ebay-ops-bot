@@ -57,6 +57,6 @@ def test_supplier_ui_explains_shipping_state():
 def test_current_version_and_cache_include_landed_cost_ui():
     main = read("app/main.py")
     sw = read("app/static/service-worker.js")
-    assert 'VERSION = "0.21.10"' in main
-    assert "opsbot-v0.21.10-shell" in sw
-    assert "supplier_flow_v2.js?v=0.21.10" in sw
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
+    assert f"opsbot-v{version}-shell" in sw
+    assert f"supplier_flow_v2.js?v={version}" in sw

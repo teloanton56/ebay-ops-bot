@@ -51,7 +51,8 @@ def test_catalog_sync_tracks_every_supplier_flow_add_and_refreshes_on_products_n
 def test_v02110_loads_catalog_sync_and_updates_pwa_cache():
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     worker = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
-    assert 'VERSION = "0.21.10"' in main
+    assert 'VERSION = "' in main
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
     assert 'catalog_sync.js?v={VERSION}' in main
-    assert "opsbot-v0.21.10-shell" in worker
-    assert "/static/catalog_sync.js?v=0.21.10" in worker
+    assert f"opsbot-v{version}-shell" in worker
+    assert f"/static/catalog_sync.js?v={version}" in worker

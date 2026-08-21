@@ -27,8 +27,8 @@ def test_manual_supplier_csv_is_restored_at_bottom():
 def test_current_version_keeps_pipeline_assets_out_of_pwa():
     main = Path('app/main.py').read_text(encoding='utf-8')
     worker = Path('app/static/service-worker.js').read_text(encoding='utf-8')
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
 
-    assert 'VERSION = "0.21.10"' in main
-    assert "opsbot-v0.21.10-shell" in worker
+    assert f"opsbot-v{version}-shell" in worker
     assert 'opportunity_center.js' not in worker
     assert 'opportunity_center.css' not in worker

@@ -122,9 +122,9 @@ def test_margin_hunter_is_registered_in_radar_and_ui():
     assert "margin_hunter.js" in main
 
 
-def test_v0219_cache_contains_margin_hunter():
+def test_margin_hunter_stays_cached_on_current_version():
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     worker = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
-    assert 'VERSION = "0.21.10"' in main
-    assert "opsbot-v0.21.10-shell" in worker
-    assert "/static/margin_hunter.js?v=0.21.10" in worker
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
+    assert f"opsbot-v{version}-shell" in worker
+    assert f"/static/margin_hunter.js?v={version}" in worker

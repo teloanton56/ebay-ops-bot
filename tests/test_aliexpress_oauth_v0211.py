@@ -35,7 +35,8 @@ def test_aliexpress_ui_has_explicit_authorization_step():
 def test_current_version_registers_aliexpress_assets():
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     sw = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
-    assert 'VERSION = "0.21.10"' in main
-    assert "opsbot-v0.21.10-shell" in sw
-    assert "/static/provider_cleanup.js?v=0.21.10" in sw
-    assert "/static/supplier_flow_v2.js?v=0.21.10" in sw
+    assert 'VERSION = "' in main
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
+    assert f"opsbot-v{version}-shell" in sw
+    assert f"/static/provider_cleanup.js?v={version}" in sw
+    assert f"/static/supplier_flow_v2.js?v={version}" in sw

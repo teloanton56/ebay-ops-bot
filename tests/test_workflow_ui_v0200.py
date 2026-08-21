@@ -24,7 +24,7 @@ def test_supplier_match_is_limited_to_three_active_suppliers():
 def test_current_workflow_is_registered_in_pwa():
     main = Path('app/main.py').read_text(encoding='utf-8')
     worker = Path('app/static/service-worker.js').read_text(encoding='utf-8')
-    assert 'VERSION = "0.21.10"' in main
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
     assert 'workflow_cleanup.js' in main
-    assert "opsbot-v0.21.10-shell" in worker
-    assert '/static/workflow_cleanup.js?v=0.21.10' in worker
+    assert f"opsbot-v{version}-shell" in worker
+    assert f'/static/workflow_cleanup.js?v={version}' in worker
