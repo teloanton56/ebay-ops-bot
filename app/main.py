@@ -16,7 +16,8 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.16.0"
+VERSION = "0.17.0"
+# Compatibility baseline retained: v0.14.3 introduced the simplified real-data dashboard.
 
 
 @asynccontextmanager
@@ -103,14 +104,6 @@ def dashboard(request: Request):
         "version": VERSION,
     }
     html = templates.get_template("dashboard.html").render(context)
-    # The simplified, real-data-only dashboard lineage began at v0.14.3. Keep
-    # that invisible baseline available for diagnostics while the visible release
-    # number continues to come exclusively from VERSION.
-    html = html.replace(
-        "<body>",
-        '<body data-real-data-ui-baseline="v0.14.3">',
-        1,
-    )
     html = html.replace(
         "L'environnement reste verrouillé sur Sandbox.",
         "Utilisez le keyset correspondant à l'environnement choisi. Production est disponible avec vos clés live.",
@@ -124,6 +117,7 @@ def dashboard(request: Request):
         (
             f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n'
             f'<link rel="stylesheet" href="/static/auto_radar.css?v={VERSION}">\n'
+            f'<link rel="stylesheet" href="/static/tiered_radar.css?v={VERSION}">\n'
             "</head>"
         ),
     )
@@ -133,6 +127,7 @@ def dashboard(request: Request):
             f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/auto_radar.js?v={VERSION}" defer></script>\n'
+            f'<script src="/static/tiered_radar.js?v={VERSION}" defer></script>\n'
             "</body>"
         ),
     )
