@@ -15,7 +15,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.14.3"
+VERSION = "0.14.4"
 
 
 @asynccontextmanager
@@ -92,16 +92,19 @@ def dashboard(request: Request):
     rows = []
     for p in list_products():
         rows.append({**p, "risk": assess_product(p)})
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard.html",
-        context={
-            "products": rows,
-            "oauth": EbayClient().token_status(),
-            "config": get_settings(),
-            "version": VERSION,
-        },
+    context = {
+        "request": request,
+        "products": rows,
+        "oauth": EbayClient().token_status(),
+        "config": get_settings(),
+        "version": VERSION,
+    }
+    html = templates.get_template("dashboard.html").render(context)
+    html = html.replace(
+        "</body>",
+        f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n</body>',
     )
+    return HTMLResponse(html)
 
 
 @app.get("/manifest.webmanifest")
