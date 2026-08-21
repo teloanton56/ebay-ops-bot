@@ -1,6 +1,9 @@
 from statistics import median
 
 
+MODEL_MAX_POINTS = 90.0
+
+
 def _competition_from_listings(listings: int) -> tuple[str, float]:
     if listings <= 100:
         return "Faible", 30
@@ -31,20 +34,18 @@ def build_product_research_summary(markets: list[dict]) -> dict:
     """Build an explainable market-research score from measured marketplace data only.
 
     The score intentionally does not invent search volume or competitor conversion.
-    It combines observable listing competition, seller concentration, cross-market
-    presence and Amazon sales-rank evidence when that evidence is actually returned.
+    Missing evidence remains missing and therefore lowers the global score instead of
+    being silently removed from the denominator.
     """
     ebay = [row for row in markets if row.get("source") == "EBAY"]
     amazon = [row for row in markets if row.get("source") == "AMAZON"]
     factors: list[dict] = []
     earned_points = 0.0
-    available_points = 0.0
 
     def add_factor(label: str, earned: float, maximum: float, detail: str) -> None:
-        nonlocal earned_points, available_points
+        nonlocal earned_points
         earned = max(0.0, min(float(earned), float(maximum)))
         earned_points += earned
-        available_points += maximum
         factors.append({"label": label, "earned": round(earned, 1), "maximum": maximum, "detail": detail})
 
     measured = [row for row in markets if int(row.get("total_results") or 0) > 0]
@@ -153,7 +154,7 @@ def build_product_research_summary(markets: list[dict]) -> dict:
             "meaning": "Un prochain relevé permettra de comparer l'évolution de l'offre",
         }
 
-    score = round(earned_points / available_points * 100) if available_points else 0
+    score = round(earned_points / MODEL_MAX_POINTS * 100) if markets else 0
     has_ebay = bool(ebay_listing_counts)
     has_amazon_demand = bool(amazon_ranks)
     has_history = bool(history_changes)
