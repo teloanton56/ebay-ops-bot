@@ -22,7 +22,7 @@ def assess_product(product: dict) -> dict:
         blocks.append(f"Stock {stock} < minimum {s.min_stock}")
 
     shipping_days = int(product.get("shipping_days") or 0)
-    if shipping_days <= 0 or shipping_days >= 99:
+    if shipping_days <= 0 or shipping_days == 99:
         blocks.append("Délai de livraison non confirmé")
     elif shipping_days > s.max_shipping_days:
         blocks.append(f"Délai {shipping_days}j > maximum {s.max_shipping_days}j")
