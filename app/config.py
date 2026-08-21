@@ -73,6 +73,14 @@ class Settings:
     ebay_locale: str = _env("EBAY_LOCALE", "fr-FR")
     ebay_marketplace_id: str = _env("EBAY_MARKETPLACE_ID", "EBAY_FR")
     ebay_currency: str = _env("EBAY_CURRENCY", "EUR")
+    ebay_account_deletion_endpoint: str = _env(
+        "EBAY_ACCOUNT_DELETION_ENDPOINT",
+        "https://ebay-ops-bot.onrender.com/api/ebay/account-deletion",
+    )
+    ebay_account_deletion_verification_token: str = _env(
+        "EBAY_ACCOUNT_DELETION_VERIFICATION_TOKEN",
+        "elmHFtX9v7eY3YdBkJO5vY_fARVpx8Dw6S6ib-1d98Ar-p_e",
+    )
 
     ebay_payment_policy_id: str = _env("EBAY_PAYMENT_POLICY_ID")
     ebay_return_policy_id: str = _env("EBAY_RETURN_POLICY_ID")
