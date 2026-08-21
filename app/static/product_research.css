@@ -1,0 +1,215 @@
+.product-research-intro {
+  margin: -2px 0 18px;
+  color: #64748b;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.product-research-summary {
+  margin-bottom: 18px;
+  border: 1px solid #dbe5f1;
+  border-radius: 18px;
+  padding: 20px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+.research-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 22px;
+  margin-bottom: 18px;
+}
+
+.research-head h3 {
+  margin: 5px 0 7px;
+  font-size: 1.45rem;
+  color: #0f172a;
+}
+
+.research-head p {
+  margin: 0;
+  max-width: 760px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.research-kicker {
+  display: inline-block;
+  font-size: 0.72rem;
+  letter-spacing: 0.11em;
+  font-weight: 800;
+  color: #2563eb;
+}
+
+.research-score {
+  min-width: 118px;
+  min-height: 108px;
+  padding: 13px 14px;
+  border-radius: 16px;
+  text-align: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.research-score strong {
+  font-size: 2rem;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.research-score > span {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.research-score small {
+  display: block;
+  margin-top: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.research-score.strong { background: #ecfdf5; border-color: #a7f3d0; }
+.research-score.strong small { color: #047857; }
+.research-score.good { background: #eff6ff; border-color: #bfdbfe; }
+.research-score.good small { color: #1d4ed8; }
+.research-score.caution { background: #fffbeb; border-color: #fde68a; }
+.research-score.caution small { color: #b45309; }
+.research-score.weak { background: #fef2f2; border-color: #fecaca; }
+.research-score.weak small { color: #b91c1c; }
+
+.research-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.research-metric {
+  padding: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.research-metric small,
+.research-metric span {
+  display: block;
+}
+
+.research-metric small {
+  color: #64748b;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.research-metric strong {
+  display: block;
+  margin: 4px 0;
+  color: #0f172a;
+  font-size: 1.06rem;
+}
+
+.research-metric span {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.research-breakdown {
+  padding: 15px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.research-breakdown-title,
+.research-factor > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.research-breakdown-title {
+  margin-bottom: 12px;
+}
+
+.research-breakdown-title span {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.research-factor + .research-factor {
+  margin-top: 12px;
+}
+
+.research-factor span,
+.research-factor small {
+  display: block;
+}
+
+.research-factor small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.research-factor b {
+  color: #334155;
+  font-size: 0.82rem;
+}
+
+.research-factor-bar {
+  height: 6px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.research-factor-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+}
+
+.research-missing {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
+.research-missing strong { color: #9a3412; }
+.research-missing span { color: #c2410c; font-size: 0.82rem; line-height: 1.45; }
+
+.research-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.research-empty {
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 900px) {
+  .research-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .research-head { flex-direction: column; }
+  .research-score { width: 100%; min-height: 0; }
+  .research-metrics { grid-template-columns: 1fr; }
+  .research-breakdown-title,
+  .research-factor > div:first-child { align-items: flex-start; }
+}
