@@ -33,7 +33,7 @@ def calculate_product_score(product: dict, supplier: dict | None = None) -> dict
         f"{stock} unité(s) · minimum {settings.min_stock}")
 
     shipping_days = int(product.get("shipping_days") or 0)
-    if shipping_days <= 0 or shipping_days >= 99:
+    if shipping_days <= 0 or shipping_days == 99:
         shipping_points, shipping_detail = 0, "Délai non confirmé"
     elif shipping_days <= settings.max_shipping_days:
         shipping_points, shipping_detail = 15, f"{shipping_days} j · dans la règle"
