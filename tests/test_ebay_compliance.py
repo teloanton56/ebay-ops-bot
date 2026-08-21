@@ -10,6 +10,7 @@ from app.services.cloud_auth import public_path
 
 ENDPOINT = "https://ebay-ops-bot.onrender.com/api/ebay/account-deletion"
 TOKEN = "elmHFtX9v7eY3YdBkJO5vY_fARVpx8Dw6S6ib-1d98Ar-p_e"
+SIGNATURE_HEADERS = {"X-EBAY-SIGNATURE": "test-signature-header"}
 
 
 def _configure_cloud(monkeypatch, tmp_path):
@@ -36,6 +37,14 @@ def test_ebay_challenge_endpoint_is_public_and_matches_required_hash(monkeypatch
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
     assert response.json() == {"challengeResponse": expected}
+    get_settings.cache_clear()
+
+
+def test_account_deletion_notification_requires_signature_header(monkeypatch, tmp_path):
+    _configure_cloud(monkeypatch, tmp_path)
+    with TestClient(app) as client:
+        response = client.post("/api/ebay/account-deletion", json={})
+    assert response.status_code == 412
     get_settings.cache_clear()
 
 
@@ -77,8 +86,8 @@ def test_account_deletion_notification_removes_matching_ebay_support_data_idempo
                 ),
             )
 
-        first = client.post("/api/ebay/account-deletion", json=payload)
-        second = client.post("/api/ebay/account-deletion", json=payload)
+        first = client.post("/api/ebay/account-deletion", json=payload, headers=SIGNATURE_HEADERS)
+        second = client.post("/api/ebay/account-deletion", json=payload, headers=SIGNATURE_HEADERS)
 
         with db.conn() as connection:
             remaining = connection.execute("SELECT COUNT(*) AS count FROM support_cases").fetchone()["count"]
