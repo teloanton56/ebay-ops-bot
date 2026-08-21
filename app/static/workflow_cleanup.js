@@ -36,9 +36,8 @@
     if (!overview) return;
     $$('.two-col > .panel', overview).forEach(panel => {
       const text = (panel.textContent || '').toLowerCase();
-      if (text.includes('checklist de lancement') || text.includes('que voulez-vous faire')) panel.remove();
+      if (text.includes('checklist de lancement') || text.includes('que voulez-vous faire')) panel.hidden = true;
     });
-    $$('.two-col', overview).forEach(row => { if (!row.children.length) row.remove(); });
 
     const hero = overview.querySelector('.hero');
     if (hero) {
