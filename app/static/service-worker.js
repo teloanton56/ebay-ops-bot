@@ -1,17 +1,18 @@
-const SHELL = 'opsbot-v0.21.9-shell';
+const SHELL = 'opsbot-v0.21.10-shell';
 const ASSETS = [
-  '/static/app.css?v=0.21.9',
-  '/static/app.js?v=0.21.9',
-  '/static/provider_cleanup.js?v=0.21.9',
-  '/static/workflow_cleanup.js?v=0.21.9',
-  '/static/product_research.css?v=0.21.9',
-  '/static/product_research.js?v=0.21.9',
-  '/static/auto_radar.css?v=0.21.9',
-  '/static/auto_radar.js?v=0.21.9',
-  '/static/tiered_radar.css?v=0.21.9',
-  '/static/tiered_radar.js?v=0.21.9',
-  '/static/supplier_flow_v2.js?v=0.21.9',
-  '/static/margin_hunter.js?v=0.21.9',
+  '/static/app.css?v=0.21.10',
+  '/static/app.js?v=0.21.10',
+  '/static/provider_cleanup.js?v=0.21.10',
+  '/static/workflow_cleanup.js?v=0.21.10',
+  '/static/product_research.css?v=0.21.10',
+  '/static/product_research.js?v=0.21.10',
+  '/static/auto_radar.css?v=0.21.10',
+  '/static/auto_radar.js?v=0.21.10',
+  '/static/tiered_radar.css?v=0.21.10',
+  '/static/tiered_radar.js?v=0.21.10',
+  '/static/supplier_flow_v2.js?v=0.21.10',
+  '/static/margin_hunter.js?v=0.21.10',
+  '/static/catalog_sync.js?v=0.21.10',
   '/static/app-icon.svg',
   '/offline'
 ];

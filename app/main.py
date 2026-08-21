@@ -16,7 +16,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.21.9"
+VERSION = "0.21.10"
 # Compatibility baseline retained: v0.14.3 introduced the simplified real-data dashboard.
 
 
@@ -132,6 +132,7 @@ def dashboard(request: Request):
             f'<script src="/static/tiered_radar.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/supplier_flow_v2.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/margin_hunter.js?v={VERSION}" defer></script>\n'
+            f'<script src="/static/catalog_sync.js?v={VERSION}" defer></script>\n'
             "</body>"
         ),
     )
