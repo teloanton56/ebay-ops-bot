@@ -4,17 +4,42 @@ import math
 
 def calculate_profit(product: dict, sale_price: float | None = None) -> dict:
     s = get_settings()
-    price = float(sale_price if sale_price is not None else (product.get("target_price") or 0))
+    explicit_price = sale_price is not None
+    raw_price = sale_price if explicit_price else product.get("target_price")
+    has_price = raw_price is not None and float(raw_price or 0) > 0
+    price = float(raw_price or 0)
     supplier = float(product.get("supplier_cost") or 0)
     shipping = float(product.get("shipping_cost") or 0)
+    landed_cost = supplier + shipping
+
+    if not has_price:
+        variable_rate = (s.default_ebay_fee_percent + s.default_ad_rate_percent + s.default_return_reserve_percent) / 100
+        break_even = landed_cost + s.default_fixed_fee
+        if variable_rate < 1:
+            break_even = break_even / (1 - variable_rate)
+        return {
+            "sale_price": None,
+            "supplier_cost": round(supplier, 2),
+            "shipping_cost": round(shipping, 2),
+            "landed_cost": round(landed_cost, 2),
+            "estimated_ebay_fee": None,
+            "estimated_ad_fee": None,
+            "returns_reserve": None,
+            "fixed_fee": None,
+            "total_estimated_cost": None,
+            "estimated_profit": None,
+            "margin_percent": None,
+            "roi_percent": None,
+            "break_even_price": round(break_even, 2),
+        }
+
     ebay_fee = price * s.default_ebay_fee_percent / 100
     ad_fee = price * s.default_ad_rate_percent / 100
     returns_reserve = price * s.default_return_reserve_percent / 100
-    fixed = s.default_fixed_fee if price > 0 else 0
-    landed_cost = supplier + shipping
+    fixed = s.default_fixed_fee
     total_cost = landed_cost + ebay_fee + ad_fee + returns_reserve + fixed
     profit = price - total_cost
-    margin = (profit / price * 100) if price else -100
+    margin = profit / price * 100
     roi = (profit / landed_cost * 100) if landed_cost else 0
     break_even = landed_cost + fixed
     variable_rate = (s.default_ebay_fee_percent + s.default_ad_rate_percent + s.default_return_reserve_percent) / 100
