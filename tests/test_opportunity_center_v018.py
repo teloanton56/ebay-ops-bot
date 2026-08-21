@@ -1,7 +1,6 @@
+import asyncio
 import json
 from pathlib import Path
-
-import pytest
 
 from app.config import get_settings
 from app.services import db
@@ -122,8 +121,7 @@ def test_workflow_supplier_selection_and_risk_pipeline(tmp_path, monkeypatch):
     assert get_workflow(workflow["id"])["stage"] == "RISK_VALIDATED"
 
 
-@pytest.mark.asyncio
-async def test_amazon_confirmation_classifies_multi_market_signal(tmp_path, monkeypatch):
+def test_amazon_confirmation_classifies_multi_market_signal(tmp_path, monkeypatch):
     configure(tmp_path, monkeypatch)
     opportunity = create_opportunity()
     workflow = ensure_workflow(opportunity["id"])
@@ -139,14 +137,13 @@ async def test_amazon_confirmation_classifies_multi_market_signal(tmp_path, monk
         }
 
     monkeypatch.setattr("app.services.opportunity_market.AmazonRadarClient.search_catalog", fake_search)
-    result = await amazon_intelligence(workflow["id"])
+    result = asyncio.run(amazon_intelligence(workflow["id"]))
     assert result["signal"] == "CONFIRMED_MULTI_MARKET"
     assert result["best_sales_rank"] == 900
     assert result["offer_count_total"] == 10
 
 
-@pytest.mark.asyncio
-async def test_listing_draft_remains_local_and_records_missing_aspects(tmp_path, monkeypatch):
+def test_listing_draft_remains_local_and_records_missing_aspects(tmp_path, monkeypatch):
     configure(tmp_path, monkeypatch)
     opportunity = create_opportunity()
     workflow = ensure_workflow(opportunity["id"])
@@ -157,12 +154,13 @@ async def test_listing_draft_remains_local_and_records_missing_aspects(tmp_path,
 
     async def fake_suggestions(self, query, marketplace_id=None):
         return {"categorySuggestions": [{"category": {"categoryId": "20649", "categoryName": "Ventilateurs"}}]}
+
     async def fake_aspects(self, category_id, marketplace_id=None):
         return {"aspects": [{"localizedAspectName": "Marque", "aspectConstraint": {"aspectRequired": True}}]}
 
     monkeypatch.setattr("app.services.opportunity_listing.EbayClient.get_category_suggestions", fake_suggestions)
     monkeypatch.setattr("app.services.opportunity_listing.EbayClient.get_item_aspects", fake_aspects)
-    listing = await prepare_listing_draft(workflow["id"])
+    listing = asyncio.run(prepare_listing_draft(workflow["id"]))
     assert listing["dry_run"] is True
     assert listing["category_id"] == "20649"
     assert listing["required_aspects_missing"] == ["Marque"]
