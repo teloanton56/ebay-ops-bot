@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 
+from app.services import auto_radar as auto_radar_service
 from app.services.auto_radar import (
     auto_radar_status,
     dismiss_auto_opportunity,
@@ -7,6 +8,12 @@ from app.services.auto_radar import (
     run_auto_radar,
 )
 
+# Category names arrive localized and are normalized before matching. Normalize
+# the configured exclusions once as well so names such as « Véhicules » are
+# reliably excluded on the French taxonomy tree.
+auto_radar_service.EXCLUDED_CATEGORY_TERMS = {
+    auto_radar_service._normalize(term) for term in auto_radar_service.EXCLUDED_CATEGORY_TERMS
+}
 
 router = APIRouter(prefix="/api/radar/auto", tags=["Radar automatique"])
 
