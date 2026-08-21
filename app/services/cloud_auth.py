@@ -102,6 +102,7 @@ def public_path(path: str) -> bool:
         path == "/health"
         or path == "/login"
         or path == "/api/cloud/login"
+        or path == "/api/auth/ebay/callback"
         or path == "/api/ebay/account-deletion"
         or path == "/manifest.webmanifest"
         or path == "/service-worker.js"
