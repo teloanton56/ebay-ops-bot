@@ -40,6 +40,38 @@
     card.appendChild(note);
   }
 
+  function bindAliExpressConnection(card) {
+    const form = card?.querySelector('.connection-form[data-provider="aliexpress"]');
+    if (!form || form.dataset.nativeBound === '1') return;
+    form.dataset.nativeBound = '1';
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      const badge = card.querySelector('#connectionStatus-aliexpress');
+      const help = card.querySelector('#connectionHelp-aliexpress');
+      const payload = Object.fromEntries(new FormData(form).entries());
+      Object.keys(payload).forEach(key => { if (payload[key] === '') delete payload[key]; });
+      if (button) { button.disabled = true; button.textContent = 'Vérification…'; }
+      try {
+        const response = await fetch('/api/connections/aliexpress', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Erreur ${response.status}`);
+        form.reset();
+        if (badge) { badge.textContent = 'Connecté'; badge.className = 'status-badge good'; }
+        if (help) help.innerHTML = '<span>Connexion fournisseur vérifiée. AliExpress est disponible dans le sourcing et le Pipeline.</span><div><button class="mini-btn" data-test-connection="aliexpress">Tester</button><button class="mini-btn" data-delete-connection="aliexpress">Oublier les clés</button></div>';
+      } catch (error) {
+        if (badge) { badge.textContent = 'À tester'; badge.className = 'status-badge neutral'; }
+        if (help) help.textContent = error.message;
+      } finally {
+        if (button) { button.disabled = false; button.textContent = 'Enregistrer et tester'; }
+      }
+    });
+  }
+
   function ensureConnectionSupplierLayout() {
     const section = document.querySelector('#section-connections');
     if (!section) return;
@@ -86,6 +118,7 @@
       supplierCapabilities(ali, 'SKU · prix · devise · image · boutique/entrepôt · stock si disponible · délai/livraison si disponible · analyse de marge.');
     }
     placeAfter(ali, cj || amazon || catalogHead);
+    bindAliExpressConnection(ali);
 
     section.querySelectorAll('[data-provider-card="etsy"],[data-provider-card="dropxl"]').forEach(node => node.remove());
   }
