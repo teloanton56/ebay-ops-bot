@@ -24,6 +24,7 @@ jobs:
         run: |
           node --check app/static/auto_radar.js
           node --check app/static/tiered_radar.js
+          node --check app/static/opportunity_center.js
       - name: Run tests
         env:
           APP_ACCESS_MODE: local
