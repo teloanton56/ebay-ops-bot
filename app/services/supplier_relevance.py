@@ -12,19 +12,19 @@ _STOPWORDS = {
 }
 
 _GENERIC_TOKENS = {
-    "accessory", "accessories", "black", "blue", "green", "mini", "new", "portable",
+    "accessory", "black", "blue", "green", "mini", "new", "portable",
     "pro", "red", "smart", "universal", "usb", "white", "wireless",
     "phone", "mobile", "car", "home", "2024", "2025", "2026",
 }
 
 _ALIAS_GROUPS = (
-    {"case", "cover", "shell", "coque", "etui", "etui"},
+    {"case", "cover", "shell", "coque", "etui"},
     {"holder", "mount", "stand", "bracket", "support"},
-    {"earbud", "earbuds", "earphone", "earphones", "headphone", "headphones", "headset"},
+    {"earbud", "earphone", "headphone", "headset"},
     {"charger", "charging", "chargeur", "charge"},
-    {"cable", "cord", "wire", "cables"},
+    {"cable", "cord", "wire"},
     {"fan", "ventilator", "ventilateur"},
-    {"lamp", "light", "lighting", "lampe", "lumiere", "lumiere"},
+    {"lamp", "light", "lighting", "lampe", "lumiere"},
     {"bag", "pouch", "sac"},
     {"bottle", "flask", "gourde", "bouteille"},
 )
@@ -45,7 +45,7 @@ def _normalize(value: Any) -> str:
 def _stem(token: str) -> str:
     if len(token) > 5 and token.endswith("ies"):
         return token[:-3] + "y"
-    if len(token) > 5 and token.endswith("es"):
+    if len(token) > 5 and token.endswith(("ches", "shes", "xes", "zes")):
         return token[:-2]
     if len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
         return token[:-1]
