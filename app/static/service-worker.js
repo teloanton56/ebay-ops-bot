@@ -1,10 +1,10 @@
-const SHELL = 'opsbot-v0.15.3-shell';
+const SHELL = 'opsbot-v0.15.4-shell';
 const ASSETS = [
-  '/static/app.css?v=0.15.3',
-  '/static/app.js?v=0.15.3',
-  '/static/provider_cleanup.js?v=0.15.3',
-  '/static/product_research.css?v=0.15.3',
-  '/static/product_research.js?v=0.15.3',
+  '/static/app.css?v=0.15.4',
+  '/static/app.js?v=0.15.4',
+  '/static/provider_cleanup.js?v=0.15.4',
+  '/static/product_research.css?v=0.15.4',
+  '/static/product_research.js?v=0.15.4',
   '/static/app-icon.svg',
   '/offline'
 ];
