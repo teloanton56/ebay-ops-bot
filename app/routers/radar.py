@@ -10,7 +10,8 @@ from app.services.db import (delete_factory_lead, delete_radar_watch, list_facto
                              delete_rfq, list_radar_watchlist, list_rfqs, list_trend_discoveries,
                              save_factory_lead, save_radar_watch, save_rfq)
 from app.services.radar import (AMAZON_MARKETPLACES, MARKETPLACES, analyze_amazon_market,
-                                analyze_ebay_market, build_rfq_message, source_statuses)
+                                analyze_ebay_market, build_product_research_summary,
+                                build_rfq_message, source_statuses)
 
 
 router = APIRouter(prefix="/api/radar", tags=["Radar 360"])
@@ -128,9 +129,18 @@ async def run_radar_scan(payload: ScanIn):
             markets.append(result)
     if not markets and errors:
         raise HTTPException(400, errors[0]["message"])
-    return {"keyword": payload.keyword, "markets": markets, "errors": errors,
-            "measured_only": True,
-            "note": "Amazon fournit un catalogue estimé et des rangs, pas le volume exact de recherches ni les conversions concurrentes."}
+    research_summary = build_product_research_summary(markets)
+    return {
+        "keyword": payload.keyword,
+        "markets": markets,
+        "errors": errors,
+        "research_summary": research_summary,
+        "measured_only": True,
+        "note": (
+            "Le score Product Research utilise uniquement des signaux observés. "
+            "Le volume exact de recherches eBay et la conversion des concurrents ne sont pas exposés par Browse API."
+        ),
+    }
 
 
 @router.get("/supplier-match")
@@ -153,7 +163,7 @@ async def supplier_match(q: str = Query(min_length=2, max_length=120)):
     except (CJError, RuntimeError) as exc:
         errors.append({"source": "CJ", "message": str(exc)})
     if not groups:
-        message = errors[0]["message"] if errors else "Connectez CJ, DropXL ou un fournisseur POD avant de comparer les offres"
+        message = errors[0]["message"] if errors else "Connectez CJ, DropXL ou un fournisseur avant de comparer les offres"
         raise HTTPException(400, message)
     return {"groups": groups, "errors": errors, "measured_only": True,
             "note": "La qualité doit toujours être confirmée par un échantillon et des documents de conformité."}
