@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.services.cj import CJClient
 from app.services.connections import DropXLClient, connection_status
 from app.services.db import list_products, list_suppliers, utc_now
+from app.services.marketplace_supplier_sources import aliexpress_supplier_offers, amazon_supplier_offers
 from app.services.profit import suggest_price
 from app.services.opportunity_store import (
     CJ_DEEP_LIMIT, _add_event, _days_from_text, _limited, _match_strength,
@@ -281,11 +282,16 @@ async def compare_suppliers(workflow_id: int) -> dict[str, Any]:
     keyword = workflow["keyword"]
     market_price = _safe_float(workflow.get("opportunity", {}).get("median_price"))
     manual = _manual_offers(keyword)
-    (dropxl, dropxl_errors), (cj, cj_errors) = await asyncio.gather(
+    (dropxl, dropxl_errors), (cj, cj_errors), (amazon, amazon_errors), (aliexpress, aliexpress_errors) = await asyncio.gather(
         _dropxl_offers(keyword),
         _cj_offers(keyword),
+        amazon_supplier_offers(keyword),
+        aliexpress_supplier_offers(keyword),
     )
-    scored = [_score_offer(offer, market_price) for offer in [*manual, *dropxl, *cj]]
+    scored = [
+        _score_offer(offer, market_price)
+        for offer in [*manual, *dropxl, *cj, *amazon, *aliexpress]
+    ]
     scored.sort(key=lambda row: (bool(row.get("eligible")), float(row.get("decision_score") or 0)), reverse=True)
     recommendation = next((row for row in scored if row.get("eligible")), scored[0] if scored else None)
     snapshot = {
@@ -294,11 +300,13 @@ async def compare_suppliers(workflow_id: int) -> dict[str, Any]:
         "market_price": market_price,
         "offers": scored,
         "recommendation_key": recommendation.get("offer_key") if recommendation else None,
-        "errors": [*dropxl_errors, *cj_errors],
+        "errors": [*dropxl_errors, *cj_errors, *amazon_errors, *aliexpress_errors],
         "sources": {
             "manual": len(manual),
             "dropxl": len(dropxl),
             "cj": len(cj),
+            "amazon": len(amazon),
+            "aliexpress": len(aliexpress),
         },
         "meaning": (
             "Le classement compare uniquement les coûts et preuves observés. Une offre dont le transport est inconnu "
