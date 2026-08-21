@@ -58,6 +58,15 @@ def _masked(value: str, visible: int = 5) -> str:
     return value[:visible] + "…" + value[-visible:]
 
 
+def _environment_for_client_id(client_id: str, requested: str) -> str:
+    normalized = client_id.strip().upper()
+    if "-PRD-" in normalized:
+        return "production"
+    if "-SBX-" in normalized:
+        return "sandbox"
+    return "production" if requested == "production" else "sandbox"
+
+
 class EbaySettingsIn(BaseModel):
     client_id: str | None = None
     client_secret: str | None = None
@@ -92,7 +101,7 @@ def ebay_settings():
     return {
         "configured": not missing,
         "missing": missing,
-        "environment": s.ebay_env,
+        "environment": s.ebay_effective_env,
         "marketplace_id": s.ebay_marketplace_id,
         "currency": s.ebay_currency,
         "client_id_masked": _masked(s.ebay_client_id),
@@ -111,13 +120,14 @@ def save_ebay_settings(payload: EbaySettingsIn):
     client_id = (payload.client_id or "").strip() or current.get("EBAY_CLIENT_ID", "")
     client_secret = (payload.client_secret or "").strip() or current.get("EBAY_CLIENT_SECRET", "")
     runame = (payload.runame or "").strip() or current.get("EBAY_RUNAME", "")
+    environment = _environment_for_client_id(client_id, payload.environment)
 
     _write_env({
         "APP_ENCRYPTION_KEY": encryption_key,
         "EBAY_CLIENT_ID": client_id,
         "EBAY_CLIENT_SECRET": client_secret,
         "EBAY_RUNAME": runame,
-        "EBAY_ENV": payload.environment,
+        "EBAY_ENV": environment,
         "EBAY_MARKETPLACE_ID": payload.marketplace_id.strip() or "EBAY_FR",
         "EBAY_CURRENCY": payload.currency.strip().upper() or "EUR",
         "DEMO_MODE": "true",
@@ -128,7 +138,11 @@ def save_ebay_settings(payload: EbaySettingsIn):
     return {
         "saved": True,
         "configured": configured,
-        "message": "Configuration eBay sauvegardée dans l'espace privé. Sandbox et Dry-run restent activés.",
+        "environment": environment,
+        "message": (
+            f"Configuration eBay {environment} sauvegardée dans l'espace privé. "
+            "Les écritures et publications restent verrouillées."
+        ),
     }
 
 
