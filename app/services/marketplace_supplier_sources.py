@@ -50,8 +50,13 @@ def save_aliexpress_credentials(values: dict[str, Any]) -> None:
         current = _aliexpress_env_credentials()
     current.pop("disabled", None)
     for key, value in values.items():
-        if key in allowed and value is not None and str(value).strip():
-            current[key] = str(value).strip()
+        if key not in allowed or value is None:
+            continue
+        text = str(value).strip()
+        if key == "last_error":
+            current[key] = text
+        elif text:
+            current[key] = text
     kv_set(ALIEXPRESS_STORAGE_KEY, encrypt(json.dumps(current, ensure_ascii=False)) or "")
 
 
