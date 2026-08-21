@@ -26,6 +26,7 @@ jobs:
           node --check app/static/workflow_cleanup.js
           node --check app/static/supplier_flow_v2.js
           node --check app/static/margin_hunter.js
+          node --check app/static/shop_spy.js
           node --check app/static/catalog_sync.js
           node --check app/static/product_research.js
           node --check app/static/auto_radar.js
