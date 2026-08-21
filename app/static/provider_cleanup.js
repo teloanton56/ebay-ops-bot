@@ -24,6 +24,68 @@
     return false;
   }
 
+  function supplierCapabilities(card, text) {
+    if (!card || card.querySelector('.supplier-capability-note')) return;
+    const note = document.createElement('div');
+    note.className = 'supplier-capability-note info-box';
+    note.innerHTML = `<strong>Paramètres fournisseur</strong><p>${text}</p>`;
+    card.appendChild(note);
+  }
+
+  function ensureConnectionSupplierLayout() {
+    const section = document.querySelector('#section-connections');
+    if (!section) return;
+    const heads = [...section.querySelectorAll('.connection-group-head')];
+    const catalogHead = heads.find(head => (head.textContent || '').toLowerCase().includes('catalogues et production'));
+    if (!catalogHead) return;
+
+    const amazon = section.querySelector('[data-provider-card="amazon"]');
+    const cj = section.querySelector('.connection-card-cj');
+    if (amazon) {
+      catalogHead.insertAdjacentElement('afterend', amazon);
+      const kicker = amazon.querySelector('.panel-kicker');
+      const paragraph = amazon.querySelector(':scope > p');
+      const policy = amazon.querySelector('.policy-note');
+      if (kicker) kicker.textContent = 'FOURNISSEUR API';
+      if (paragraph) paragraph.textContent = 'Catalogue Amazon France utilisé comme véritable source fournisseur : recherche produit, prix, références et données disponibles alimentent le sourcing.';
+      if (policy) policy.textContent = 'Les données Amazon sont normalisées dans le même schéma fournisseur que CJ. Stock, livraison et coût livré restent validés seulement lorsqu’ils sont réellement disponibles.';
+      supplierCapabilities(amazon, 'SKU/ASIN · prix · devise · image · entrepôt · stock si disponible · délai/livraison si disponible · analyse de marge.');
+    }
+
+    if (cj) {
+      const anchor = amazon || catalogHead;
+      anchor.insertAdjacentElement('afterend', cj);
+      supplierCapabilities(cj, 'SKU · variantes · prix · stock · entrepôt · transport France · délai · coût livré · analyse de marge.');
+    }
+
+    const oldAli = [...section.querySelectorAll('.connection-card')].find(card => {
+      const title = (card.querySelector('h2')?.textContent || '').trim().toLowerCase();
+      return title === 'aliexpress' && !card.classList.contains('native-aliexpress-card');
+    });
+    oldAli?.remove();
+
+    let ali = section.querySelector('.native-aliexpress-card');
+    if (!ali) {
+      ali = document.createElement('article');
+      ali.className = 'panel connection-card native-aliexpress-card';
+      ali.dataset.providerCard = 'aliexpress';
+      ali.innerHTML = `
+        <div class="panel-head"><div><span class="panel-kicker">FOURNISSEUR API</span><h2>AliExpress</h2></div><span id="connectionStatus-aliexpress" class="status-badge neutral">À connecter</span></div>
+        <p>Catalogue AliExpress utilisé comme véritable fournisseur : recherche produit, prix et données logistiques disponibles alimentent le sourcing.</p>
+        <form class="form-grid connection-form" data-provider="aliexpress">
+          <label>App Key<input name="app_key" type="password" autocomplete="new-password" placeholder="Clé application AliExpress"></label>
+          <label>App Secret<input name="app_secret" type="password" autocomplete="new-password" placeholder="Secret application AliExpress"></label>
+          <label class="full">Tracking ID <span class="seller">(facultatif)</span><input name="tracking_id" autocomplete="off" placeholder="Tracking ID Affiliate API"></label>
+          <div class="full form-actions"><a class="btn btn-ghost" href="https://open.aliexpress.com/" target="_blank" rel="noopener">Configurer l’API ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div>
+        </form>
+        <div id="connectionHelp-aliexpress" class="connection-help">La connexion n’est considérée active qu’après un vrai test API.</div>`;
+      supplierCapabilities(ali, 'SKU · prix · devise · image · boutique/entrepôt · stock si disponible · délai/livraison si disponible · analyse de marge.');
+    }
+    (cj || amazon || catalogHead).insertAdjacentElement('afterend', ali);
+
+    section.querySelectorAll('[data-provider-card="etsy"],[data-provider-card="dropxl"]').forEach(node => node.remove());
+  }
+
   function removeUnwantedSections() {
     document.querySelectorAll('[data-provider-card="etsy"],[data-provider-card="dropxl"]').forEach(node => node.remove());
 
@@ -191,17 +253,22 @@
   }
 
   function runCleanup() {
+    ensureConnectionSupplierLayout();
     cleanup(document);
+    ensureConnectionSupplierLayout();
     removeUnwantedSections();
     ensurePipelineSection();
     setupSupplierTabs();
     setTimeout(() => {
+      ensureConnectionSupplierLayout();
       cleanup(document);
+      ensureConnectionSupplierLayout();
       removeUnwantedSections();
       ensurePipelineSection();
       setupSupplierTabs();
     }, 300);
     setTimeout(() => {
+      ensureConnectionSupplierLayout();
       ensurePipelineSection();
       setupSupplierTabs();
     }, 1200);
@@ -212,7 +279,9 @@
   else runCleanup();
 
   const observer = new MutationObserver(() => {
+    ensureConnectionSupplierLayout();
     cleanup(document);
+    ensureConnectionSupplierLayout();
     ensurePipelineSection();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
