@@ -35,12 +35,12 @@ def test_supplier_kpis_are_preserved_for_legacy_refreshes():
 def test_no_startup_compatibility_script_is_reintroduced():
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     assert "runtime_compat.js" not in main
-    assert 'VERSION = "0.21.8"' in main
+    assert 'VERSION = "0.21.9"' in main
 
 
 def test_current_service_worker_keeps_known_good_cache_logic():
     worker = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
-    assert "opsbot-v0.21.8-shell" in worker
-    assert "/static/provider_cleanup.js?v=0.21.8" in worker
-    assert "/static/workflow_cleanup.js?v=0.21.8" in worker
+    assert "opsbot-v0.21.9-shell" in worker
+    assert "/static/provider_cleanup.js?v=0.21.9" in worker
+    assert "/static/workflow_cleanup.js?v=0.21.9" in worker
     assert "caches.delete(key)" in worker

@@ -8,6 +8,7 @@ from app.services.connections import IntegrationError, YouTubeClient, connection
 from app.services.db import (delete_factory_lead, delete_radar_watch, list_factory_leads, list_radar_scans,
                              delete_rfq, list_radar_watchlist, list_rfqs, list_trend_discoveries,
                              save_factory_lead, save_radar_watch, save_rfq)
+from app.services.margin_hunter import hunt_margin_opportunities
 from app.services.marketplace_supplier_sources import aliexpress_supplier_offers, amazon_supplier_offers
 from app.services.product_research import build_product_research_summary
 from app.services.radar import (AMAZON_MARKETPLACES, MARKETPLACES, analyze_amazon_market,
@@ -47,6 +48,11 @@ class RFQIn(BaseModel):
 
 class DiscoveryIn(BaseModel):
     country: str = Field(default="FR", min_length=2, max_length=2)
+
+
+class MarginHunterIn(BaseModel):
+    keyword: str = Field(min_length=2, max_length=120)
+    limit: int = Field(default=10, ge=1, le=10)
 
 
 @router.get("/sources")
@@ -91,6 +97,14 @@ async def discover_without_keyword(payload: DiscoveryIn):
     try:
         return await YouTubeClient().discover(payload.country.upper())
     except IntegrationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/margin-hunter")
+async def margin_hunter(payload: MarginHunterIn):
+    try:
+        return await hunt_margin_opportunities(payload.keyword, limit=payload.limit)
+    except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
