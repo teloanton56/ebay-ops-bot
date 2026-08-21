@@ -3,6 +3,7 @@
 
   const offerStore = new Map();
   let counter = 0;
+  let catalogObserver = null;
 
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -173,6 +174,39 @@
     });
   }
 
+  function normalizeProductCatalogPresentation() {
+    const body = document.querySelector('#productTableBody');
+    if (!body) return;
+    body.querySelectorAll('tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length < 6) return;
+      const supplierCell = cells[1];
+      const priceCell = cells[2];
+      const providerText = (supplierCell.textContent || '').toLowerCase();
+      const managedSupplier = providerText.includes('cj dropshipping') || providerText.includes('aliexpress') || providerText.includes('amazon france');
+      const priceStrong = priceCell.querySelector('strong');
+      const targetHint = priceCell.querySelector('.seller');
+      const targetMissing = (priceStrong?.textContent || '').trim() === '—' || (targetHint?.textContent || '').includes('Cible —');
+      if (!targetMissing) return;
+
+      if (priceStrong && priceStrong.textContent !== 'À calculer') priceStrong.textContent = 'À calculer';
+      const supplierMeta = supplierCell.querySelector('.seller');
+      if (managedSupplier && supplierMeta && !supplierMeta.textContent.includes('livraison à confirmer')) {
+        const parts = supplierMeta.textContent.split('+');
+        if (parts.length >= 2) supplierMeta.textContent = `${parts[0].trim()} + livraison à confirmer`;
+      }
+    });
+  }
+
+  function watchProductCatalog() {
+    const body = document.querySelector('#productTableBody');
+    if (!body) return;
+    normalizeProductCatalogPresentation();
+    if (catalogObserver) catalogObserver.disconnect();
+    catalogObserver = new MutationObserver(() => normalizeProductCatalogPresentation());
+    catalogObserver.observe(body, {childList: true, subtree: true});
+  }
+
   document.addEventListener('submit', event => {
     const form = event.target.closest('#supplierMatchForm');
     if (!form) return;
@@ -192,6 +226,7 @@
   const run = () => {
     ensureLegacyCompatibility();
     enhanceCatalogResults();
+    watchProductCatalog();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once: true});
   else run();
