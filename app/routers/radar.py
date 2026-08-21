@@ -4,11 +4,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.cj import CJClient, CJError
-from app.services.connections import (IntegrationError, YouTubeClient, connection_status,
-                                      match_connected_suppliers)
+from app.services.connections import IntegrationError, YouTubeClient, connection_status
 from app.services.db import (delete_factory_lead, delete_radar_watch, list_factory_leads, list_radar_scans,
                              delete_rfq, list_radar_watchlist, list_rfqs, list_trend_discoveries,
                              save_factory_lead, save_radar_watch, save_rfq)
+from app.services.marketplace_supplier_sources import aliexpress_supplier_offers, amazon_supplier_offers
 from app.services.product_research import build_product_research_summary
 from app.services.radar import (AMAZON_MARKETPLACES, MARKETPLACES, analyze_amazon_market,
                                 analyze_ebay_market, build_rfq_message, source_statuses)
@@ -143,30 +143,80 @@ async def run_radar_scan(payload: ScanIn):
     }
 
 
+def _marketplace_group(source: str, offers: list[dict]) -> dict:
+    products = []
+    for offer in offers:
+        products.append({
+            "provider": source,
+            "supplier_sku": offer.get("supplier_sku"),
+            "name": offer.get("name"),
+            "price": offer.get("product_cost"),
+            "currency": offer.get("currency") or "EUR",
+            "stock": offer.get("stock"),
+            "image_url": offer.get("image_url") or "",
+            "source_url": offer.get("source_url") or "",
+            "shipping_days": offer.get("shipping_days"),
+            "warehouse": offer.get("warehouse") or "",
+            "quality_verified": False,
+            "quality_evidence": offer.get("evidence") or [],
+        })
+    return {
+        "source": source,
+        "products": products,
+        "total": len(products),
+        "note": "Données fournisseur normalisées. Stock, livraison et conformité ne sont validés que lorsqu'ils sont réellement fournis.",
+    }
+
+
 @router.get("/supplier-match")
 async def supplier_match(q: str = Query(min_length=2, max_length=120)):
-    if len(q.strip()) < 2:
+    keyword = q.strip()
+    if len(keyword) < 2:
         raise HTTPException(400, "Mot-clé trop court")
-    groups, errors = await match_connected_suppliers(q.strip())
+
+    groups: list[dict] = []
+    errors: list[dict] = []
+
     try:
         cj_status = CJClient().status()
-        if cj_status.get("configured"):
-            result = await CJClient().search_products(keyword=q.strip(), size=12, min_stock=3)
+        if cj_status.get("connected"):
+            result = await CJClient().search_products(keyword=keyword, size=12, min_stock=3)
             for product in result["products"]:
                 product["provider"] = "CJ"
-                product["quality_evidence"] = [x for x in ["CE déclaré" if product.get("has_ce") else None,
-                                                            f"Stock observé : {product.get('stock', 0)}",
-                                                            f"Présence CJ : {product.get('listed_num', 0)} listings"] if x]
+                product["quality_evidence"] = [x for x in [
+                    "CE déclaré" if product.get("has_ce") else None,
+                    f"Stock observé : {product.get('stock', 0)}",
+                    f"Présence CJ : {product.get('listed_num', 0)} listings",
+                ] if x]
                 product["quality_verified"] = False
-            groups.insert(0, {"source": "CJ", "products": result["products"], "total": result["total"],
-                              "note": "Prix produit CJ avant transport; analyse France disponible après sélection."})
+            groups.append({
+                "source": "CJ",
+                "products": result["products"],
+                "total": result["total"],
+                "note": "Prix produit CJ avant transport ; analyse France disponible après sélection.",
+            })
     except (CJError, RuntimeError) as exc:
         errors.append({"source": "CJ", "message": str(exc)})
+
+    amazon_offers, amazon_errors = await amazon_supplier_offers(keyword)
+    errors.extend(amazon_errors)
+    if amazon_offers:
+        groups.append(_marketplace_group("Amazon", amazon_offers))
+
+    aliexpress_offers, aliexpress_errors = await aliexpress_supplier_offers(keyword)
+    errors.extend(aliexpress_errors)
+    if aliexpress_offers:
+        groups.append(_marketplace_group("AliExpress", aliexpress_offers))
+
     if not groups:
-        message = errors[0]["message"] if errors else "Connectez CJ, DropXL ou un fournisseur avant de comparer les offres"
+        message = errors[0]["message"] if errors else "Connectez CJ, Amazon ou AliExpress avant de comparer les offres"
         raise HTTPException(400, message)
-    return {"groups": groups, "errors": errors, "measured_only": True,
-            "note": "La qualité doit toujours être confirmée par un échantillon et des documents de conformité."}
+    return {
+        "groups": groups,
+        "errors": errors,
+        "measured_only": True,
+        "note": "Comparaison limitée aux trois fournisseurs actifs du bot : CJ, Amazon et AliExpress.",
+    }
 
 
 @router.get("/factories")
