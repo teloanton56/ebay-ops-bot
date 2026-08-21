@@ -11,7 +11,8 @@ from app.services.marketplace_supplier_sources import (
     aliexpress_connection_status,
     load_aliexpress_credentials,
 )
-from app.services.opportunity_store import _match_strength, _safe_float
+from app.services.opportunity_store import _safe_float
+from app.services.supplier_relevance import rank_supplier_results
 
 
 ALIEXPRESS_SYNC_ENDPOINT = "https://api-sg.aliexpress.com/sync"
@@ -85,7 +86,10 @@ class AliExpressDropshipSearchClient:
             raise RuntimeError(str(message))
         return payload
 
-    async def search(self, keyword: str, page_size: int = 10) -> list[dict[str, Any]]:
+    async def search(self, keyword: str, page_size: int = 20) -> list[dict[str, Any]]:
+        # Do not force salesDesc here: the supplier screen needs lexical relevance
+        # first. Sales volume remains available as evidence after relevant matches
+        # have been selected locally.
         payload = await self._call(ALIEXPRESS_TEXT_SEARCH_METHOD, {
             "keyword": keyword,
             "countryCode": "FR",
@@ -93,7 +97,6 @@ class AliExpressDropshipSearchClient:
             "local": "fr_FR",
             "page_size": str(min(max(int(page_size), 1), 50)),
             "page_index": "1",
-            "sort": "salesDesc",
         })
         root = payload.get("aliexpress_ds_text_search_response") or {}
         code = str(root.get("code") or "00")
@@ -112,18 +115,34 @@ async def aliexpress_dropship_supplier_offers(keyword: str) -> tuple[list[dict[s
 
     client = AliExpressDropshipSearchClient()
     try:
-        products = await client.search(keyword, page_size=10)
+        products = await client.search(keyword, page_size=50)
     except Exception as exc:
         return [], [{"source": "AliExpress", "message": str(exc)}]
 
+    relevant_products, rejected = rank_supplier_results(
+        keyword,
+        products,
+        title_keys=("title",),
+        limit=20,
+    )
+    if not relevant_products:
+        suffix = f" ({len(products)} résultat(s) hors sujet ignoré(s))" if products else ""
+        return [], [{
+            "source": "AliExpress",
+            "message": f"Aucun produit pertinent trouvé pour « {keyword} »{suffix}",
+        }]
+
     offers: list[dict[str, Any]] = []
-    for product in products:
+    for product in relevant_products:
         title = str(product.get("title") or keyword)
         price = _safe_float(product.get("targetSalePrice"))
         currency = str(product.get("targetOriginalPriceCurrency") or product.get("currency") or "EUR")
         rating = _safe_rating(product.get("score") or product.get("evaluateRate"))
         orders = product.get("orders")
-        evidence = ["Produit observé via l'API AliExpress Drop Shipping"]
+        evidence = [
+            f"Pertinence recherche : {float(product.get('match_strength') or 0) * 100:.0f}%",
+            "Produit observé via l'API AliExpress Drop Shipping",
+        ]
         if orders not in (None, ""):
             evidence.append(f"Volume affiché AliExpress : {orders}")
         if rating is not None:
@@ -148,8 +167,9 @@ async def aliexpress_dropship_supplier_offers(keyword: str) -> tuple[list[dict[s
             "compliance_flags": [],
             "evidence": evidence,
             "shipping_known": False,
-            "match_strength": round(_match_strength(keyword, title), 2),
+            "match_strength": product.get("match_strength"),
             "marketplace_orders": orders,
             "rating": rating,
+            "filtered_out": rejected,
         })
     return offers, []
