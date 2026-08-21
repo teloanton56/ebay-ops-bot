@@ -6,8 +6,9 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.routers import (auth, automation, channels, cj, cloud, connections, ebay, ebay_compliance, finance,
-                         products, radar, research, settings, suppliers, support, taxonomy, ui)
+from app.routers import (auth, auto_radar, automation, channels, cj, cloud, connections, ebay,
+                         ebay_compliance, finance, products, radar, research, settings, suppliers,
+                         support, taxonomy, ui)
 from app.services.cloud_auth import COOKIE_NAME, allowed_hosts, allowed_origins, public_path, session_email, validate_cloud_configuration
 from app.services.db import init_db, list_products
 from app.services.ebay import EbayClient
@@ -15,7 +16,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.15.4"
+VERSION = "0.16.0"
 
 
 @asynccontextmanager
@@ -45,6 +46,7 @@ app.include_router(cj.router)
 app.include_router(connections.router)
 app.include_router(finance.router)
 app.include_router(radar.router)
+app.include_router(auto_radar.router)
 app.include_router(suppliers.router)
 app.include_router(support.router)
 app.include_router(channels.router)
@@ -111,13 +113,18 @@ def dashboard(request: Request):
     )
     html = html.replace(
         "</head>",
-        f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n</head>',
+        (
+            f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n'
+            f'<link rel="stylesheet" href="/static/auto_radar.css?v={VERSION}">\n'
+            "</head>"
+        ),
     )
     html = html.replace(
         "</body>",
         (
             f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
+            f'<script src="/static/auto_radar.js?v={VERSION}" defer></script>\n'
             "</body>"
         ),
     )
