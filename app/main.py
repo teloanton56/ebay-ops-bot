@@ -124,6 +124,7 @@ def dashboard(request: Request):
     html = html.replace(
         "</body>",
         (
+            "<!-- Compatibility baseline v0.14.3: simplified real-data dashboard -->\n"
             f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/auto_radar.js?v={VERSION}" defer></script>\n'
