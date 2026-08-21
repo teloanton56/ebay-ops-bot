@@ -6,8 +6,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.routers import (auth, automation, channels, cj, cloud, connections, ebay, finance, products,
-                         radar, research, settings, suppliers, support, taxonomy, ui)
+from app.routers import (auth, automation, channels, cj, cloud, connections, ebay, ebay_compliance, finance,
+                         products, radar, research, settings, suppliers, support, taxonomy, ui)
 from app.services.cloud_auth import COOKIE_NAME, allowed_hosts, allowed_origins, public_path, session_email, validate_cloud_configuration
 from app.services.db import init_db, list_products
 from app.services.ebay import EbayClient
@@ -15,7 +15,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.15.0"
+VERSION = "0.15.1"
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ async def lifespan(_: FastAPI):
 # into raw API screens. The API remains available to the frontend.
 app = FastAPI(title="eBay Ops Bot", version=VERSION, docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts(get_settings()))
+app.include_router(ebay_compliance.router)
 app.include_router(cloud.router)
 app.include_router(auth.router)
 app.include_router(products.router)
