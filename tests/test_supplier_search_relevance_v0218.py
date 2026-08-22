@@ -57,9 +57,11 @@ def test_cj_compare_fetches_wider_pool_and_filters_irrelevant_results(monkeypatc
 
     async def fake_search(self, **kwargs):
         assert kwargs["keyword"] == "pokemon"
-        assert kwargs["size"] == 50
+        assert kwargs["size"] == 100
+        assert kwargs["min_stock"] == 0
         assert kwargs["order_by"] == 0
         return {
+            "total": 2,
             "products": [
                 {
                     "cj_pid": "BAD-1",
