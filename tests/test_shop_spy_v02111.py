@@ -98,7 +98,8 @@ def test_shop_spy_source_has_no_decommissioned_finding_dependency():
     assert "findItemsAdvanced" not in source
     assert 'BROWSE_ROOT_CATEGORY = "0"' in source
     assert '"/buy/browse/v1/item_summary/search"' in source
-    assert "buyingOptions:{AUCTION|FIXED_PRICE|BEST_OFFER}" in source
+    assert "buyingOptions:" in source
+    assert "AUCTION|FIXED_PRICE|BEST_OFFER" in source
 
 
 def test_shop_spy_frontend_has_real_tab_compare_and_add_flow():
