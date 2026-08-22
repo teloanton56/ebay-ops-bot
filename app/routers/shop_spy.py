@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.services.ebay_shop_spy import analyze_ebay_shop, compare_shop_listing
+from app.services.ebay_shop_spy import analyze_ebay_shop
+from app.services.shop_spy_sourcing import compare_shop_listing
 
 
 router = APIRouter(prefix="/api/shop-spy", tags=["Shop Spy"])
