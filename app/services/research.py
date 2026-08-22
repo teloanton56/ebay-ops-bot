@@ -5,11 +5,9 @@ from app.services.profit import calculate_profit, suggest_price
 
 
 def _competition_points(listing_count: int) -> float:
-    """Reward a workable market without treating more competition as demand."""
+    """Competition points never increase when active-listing competition rises."""
     if listing_count <= 0:
         return 0.0
-    if listing_count <= 25:
-        return 18.0
     if listing_count <= 100:
         return 25.0
     if listing_count <= 500:
