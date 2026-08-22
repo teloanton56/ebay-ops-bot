@@ -23,10 +23,10 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def _market_items(count: int = 10, price: float = 19.99) -> list[dict]:
+def _market_items(count: int = 10, price: float = 29.99) -> list[dict]:
     return [
         {
-            "price": {"value": str(price), "currency": "EUR"},
+            "price": {"value": str(price), "currency": "USD"},
             "seller": {"username": f"seller-{index % 5}"},
         }
         for index in range(count)
@@ -35,11 +35,14 @@ def _market_items(count: int = 10, price: float = 19.99) -> list[dict]:
 
 def test_automatic_score_no_longer_rewards_extreme_competition():
     product = {
-        "supplier_cost": 4.0,
-        "shipping_cost": 2.0,
-        "target_price": 19.99,
+        "supplier_sku": "CJ-SCORE-US",
+        "supplier_cost": 5.0,
+        "shipping_cost": 3.0,
+        "target_price": 29.99,
         "stock": 20,
         "shipping_days": 4,
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
     }
     items = _market_items()
     workable = summarize_market(items, product, total_results=100)
@@ -63,10 +66,10 @@ def test_auto_analysis_preserves_operator_target_price(monkeypatch):
         "opportunity_score": None,
         "stock": 20,
         "shipping_days": 4,
-        "marketplace_id": "EBAY_FR",
+        "marketplace_id": "EBAY_US",
         "category_id": "123",
         "product_status": "À tester",
-        "currency": "EUR",
+        "currency": "USD",
     }
 
     class FakeClient:
@@ -96,7 +99,7 @@ def test_auto_analysis_preserves_operator_target_price(monkeypatch):
     monkeypatch.setattr(analyzer, "add_alert", lambda *args, **kwargs: None)
     monkeypatch.setattr(analyzer, "summarize_market", lambda *args, **kwargs: {
         "opportunity_score": 65.0,
-        "suggested_price": 14.99,
+        "suggested_price": 19.99,
     })
     monkeypatch.setattr(analyzer, "assess_product", lambda product: {
         "pass": True,
@@ -107,11 +110,11 @@ def test_auto_analysis_preserves_operator_target_price(monkeypatch):
     asyncio.run(analyzer.analyze_catalog())
 
     assert state["target_price"] == 24.99
-    assert state["suggested_price"] == 14.99
+    assert state["suggested_price"] == 19.99
     assert state["opportunity_score"] == 65.0
 
 
-def test_unified_cj_resolver_prefers_fast_eu_freight_within_limit():
+def test_unified_cj_resolver_prefers_us_route_and_uses_usd_without_conversion():
     class FakeCJ:
         def __init__(self):
             self.freight_calls = []
@@ -128,36 +131,40 @@ def test_unified_cj_resolver_prefers_fast_eu_freight_within_limit():
                     "sku": "SKU-1",
                     "name": "Black",
                     "price_usd": 5.0,
-                    "stock": 20,
+                    "stock": 28,
                     "inventories": [
-                        {"country_code": "CN", "stock": 20},
-                        {"country_code": "DE", "stock": 8},
+                        {"country_code": "US", "stock": 18},
+                        {"country_code": "CN", "stock": 10},
                     ],
                 }],
             }
 
         async def freight_options(self, vid, *, start_country, destination_country):
             self.freight_calls.append((vid, start_country, destination_country))
-            return [
-                {"name": "Slow", "price_usd": 1.0, "delivery_days": "12-15 Days"},
-                {"name": "Fast EU", "price_usd": 3.0, "delivery_days": "4-6 Days"},
-            ]
+            assert destination_country == "US"
+            if start_country == "US":
+                return [
+                    {"name": "US Slow", "price_usd": 1.0, "delivery_days": "8-10 Days"},
+                    {"name": "US Fast", "price_usd": 3.0, "delivery_days": "4-6 Days"},
+                ]
+            return [{"name": "CN Packet", "price_usd": 4.0, "delivery_days": "8-10 Days"}]
 
     client = FakeCJ()
     landed = asyncio.run(resolve_cj_landed_offer(
         client,
         "pid-1",
-        exchange_rate=0.9,
-        max_shipping_days=7,
+        reference_price=30.0,
+        destination_country="US",
     ))
 
-    assert client.freight_calls == [("variant-1", "DE", "FR")]
-    assert landed["warehouse"] == "DE"
-    assert landed["freight_name"] == "Fast EU"
+    assert ("variant-1", "US", "US") in client.freight_calls
+    assert landed["warehouse"] == "US"
+    assert landed["freight_name"] == "US Fast"
     assert landed["shipping_days"] == 6
-    assert landed["supplier_cost"] == 4.5
-    assert landed["shipping_cost"] == 2.7
-    assert landed["landed_cost"] == 7.2
+    assert landed["supplier_cost"] == 5.0
+    assert landed["shipping_cost"] == 3.0
+    assert landed["landed_cost"] == 8.0
+    assert landed["currency"] == "USD"
 
     hunter = read("app/services/margin_hunter.py")
     flow = read("app/routers/supplier_flow.py")
@@ -167,7 +174,7 @@ def test_unified_cj_resolver_prefers_fast_eu_freight_within_limit():
     assert "resolve_cj_landed_offer" in refresh
 
 
-def test_compliance_engine_blocks_risky_products_and_retail_marketplace_fulfillment():
+def test_compliance_engine_still_blocks_risky_products_and_retail_marketplace_fulfillment():
     generic = {
         "title": "Drawer organizer kitchen storage",
         "description": "Plastic organizer",
@@ -178,21 +185,15 @@ def test_compliance_engine_blocks_risky_products_and_retail_marketplace_fulfillm
     assert generic_assessment["pass"] is True
     assert generic_assessment["publication_pass"] is True
 
-    spy_camera = assess_compliance({
-        **generic,
-        "title": "Mini spy camera surveillance hidden camera",
-    })
+    spy_camera = assess_compliance({**generic, "title": "Mini spy camera surveillance hidden camera"})
     assert spy_camera["pass"] is False
     assert any("surveillance" in block.lower() or "vie privée" in block.lower() for block in spy_camera["blocks"])
 
-    counterfeit = assess_compliance({
-        **generic,
-        "title": "Fake Nike replica shoes",
-    })
+    counterfeit = assess_compliance({**generic, "title": "Fake Nike replica shoes"})
     assert counterfeit["pass"] is False
     assert any("contrefaçon" in block.lower() for block in counterfeit["blocks"])
 
-    amazon = assess_compliance(generic, {"provider_code": "amazon", "name": "Amazon France"})
+    amazon = assess_compliance(generic, {"provider_code": "amazon", "name": "Amazon"})
     assert amazon["pass"] is True
     assert amazon["publication_pass"] is False
     assert any("publication directe bloquée" in block.lower() for block in amazon["publication_blocks"])
@@ -210,10 +211,7 @@ def test_ebay_notification_signature_is_cryptographically_verified():
     }
     message = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     signature = private_key.sign(message, ec.ECDSA(hashes.SHA1()))
-    signature_payload = {
-        "kid": "test-key-1",
-        "signature": base64.b64encode(signature).decode("ascii"),
-    }
+    signature_payload = {"kid": "test-key-1", "signature": base64.b64encode(signature).decode("ascii")}
     header = base64.b64encode(json.dumps(signature_payload).encode("ascii")).decode("ascii")
 
     async def loader(kid):
@@ -221,10 +219,7 @@ def test_ebay_notification_signature_is_cryptographically_verified():
         return {"key": public_pem, "digest": "SHA1", "algorithm": "ECDSA"}
 
     assert asyncio.run(verify_notification_signature(payload, header, key_loader=loader)) is True
-    tampered = {
-        **payload,
-        "notification": {"notificationId": "tampered", "data": {"username": "buyer"}},
-    }
+    tampered = {**payload, "notification": {"notificationId": "tampered", "data": {"username": "buyer"}}}
     assert asyncio.run(verify_notification_signature(tampered, header, key_loader=loader)) is False
 
     config_source = read("app/config.py")
@@ -243,23 +238,24 @@ def test_ebay_write_revalidates_supplier_before_risk(monkeypatch):
         "shipping_cost": 2.0,
         "stock": 20,
         "shipping_days": 4,
-        "target_price": 19.99,
+        "target_price": 29.99,
         "category_id": "123",
         "images": ["https://example.test/image.jpg"],
         "aspects": {"Type": ["Organizer"]},
-        "currency": "EUR",
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
     }
     calls = []
 
     async def refresh(current):
         calls.append("supplier")
-        return {**current, "stock": 0}, {"provider": "cj", "verified": True, "stock": 0}
+        return {**current, "stock": 0}, {"provider": "cj", "verified": True, "stock": 0, "warehouse": "US"}
 
     def risk(current):
         calls.append("risk")
         return {
             "pass": False,
-            "blocks": ["Stock 0 < minimum 3"],
+            "blocks": ["Stock 0 < minimum 10"],
             "warnings": [],
             "profit": {},
             "compliance": {"publication_blocks": []},
@@ -268,6 +264,7 @@ def test_ebay_write_revalidates_supplier_before_risk(monkeypatch):
     monkeypatch.setattr(ebay_router, "get_product", lambda product_id: dict(product))
     monkeypatch.setattr(ebay_router, "refresh_product_from_supplier", refresh)
     monkeypatch.setattr(ebay_router, "assess_product", risk)
+    monkeypatch.setattr(ebay_router, "location_key_for_warehouse", lambda warehouse: "us-location")
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(ebay_router._revalidate_for_ebay(7, actual_write=True))
