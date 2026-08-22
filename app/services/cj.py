@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 import re
-from xml.etree import ElementTree
 
 import httpx
 
@@ -83,7 +82,7 @@ class CJClient:
 
     async def warehouses(self) -> list[dict]:
         payload = await self.request("GET", "/product/globalWarehouseList")
-        return [{"country_code": x.get("countryCode"), "name": x.get("fr") or x.get("en") or x.get("areaEn")}
+        return [{"country_code": x.get("countryCode"), "name": x.get("en") or x.get("areaEn") or "CJ Warehouse"}
                 for x in (payload.get("data") or []) if not x.get("disabled")]
 
     async def categories(self) -> list[dict]:
@@ -270,9 +269,17 @@ class CJClient:
                 "delivery_days": item.get("logisticAging") or "Non indiqué",
                 "source": "freightCalculate"}
 
+    @staticmethod
+    def _require_us_destination(destination_country: str) -> str:
+        destination = str(destination_country or "").strip().upper()
+        if destination != "US":
+            raise CJError("Le mode actif calcule exclusivement le transport CJ vers les États-Unis")
+        return destination
+
     async def freight_options(self, vid: str, *, start_country: str = "CN",
-                              destination_country: str = "FR", postcode: str = "",
+                              destination_country: str = "US", postcode: str = "",
                               storage_ids: list[str] | None = None) -> list[dict]:
+        destination_country = self._require_us_destination(destination_country)
         body = {"startCountryCode": start_country, "endCountryCode": destination_country,
                 "products": [{"quantity": 1, "vid": vid}]}
         clean_storage_ids = [str(value).strip() for value in (storage_ids or []) if str(value).strip()]
@@ -288,6 +295,7 @@ class CJClient:
                                   destination_country: str = "US", postcode: str = "",
                                   storage_ids: list[str] | None = None) -> list[dict]:
         """Fallback to CJ's richer freight trial endpoint when simple freight has no route."""
+        destination_country = self._require_us_destination(destination_country)
         sku = str(variant.get("sku") or "").strip()
         vid = str(variant.get("vid") or "").strip()
         if not sku or not vid:
@@ -331,22 +339,6 @@ class CJClient:
         payload = await self.request("POST", "/logistic/freightCalculateTip", json_body={"reqDTOS": [req]})
         rows = [self._freight_row(item, tip=True) for item in (payload.get("data") or [])]
         return sorted([row for row in rows if row is not None], key=lambda x: (x["price_usd"], x["name"]))
-
-    async def usd_to_eur(self) -> dict:
-        try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                response = await client.get("https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml")
-        except httpx.HTTPError as exc:
-            raise CJError("Le taux USD/EUR de la BCE est momentanément indisponible") from exc
-        if response.is_error:
-            raise CJError("Le taux USD/EUR de la BCE est momentanément indisponible")
-        try:
-            root = ElementTree.fromstring(response.content)
-            usd = next(x for x in root.iter() if x.attrib.get("currency") == "USD")
-            dated = next((x.attrib.get("time") for x in root.iter() if x.attrib.get("time")), "")
-            return {"rate": round(1 / float(usd.attrib["rate"]), 6), "date": dated, "source": "BCE"}
-        except (StopIteration, KeyError, TypeError, ValueError, ElementTree.ParseError) as exc:
-            raise CJError("Le taux USD/EUR de la BCE est illisible") from exc
 
     @staticmethod
     def compliance_flags(detail: dict) -> list[dict]:
