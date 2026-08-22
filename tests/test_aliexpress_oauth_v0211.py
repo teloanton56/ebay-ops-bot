@@ -1,42 +1,48 @@
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
+from app.main import app
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_aliexpress_uses_modern_overseas_oauth_and_dropshipper_api():
-    oauth = (ROOT / "app/services/aliexpress_modern_oauth.py").read_text(encoding="utf-8")
-    search = (ROOT / "app/services/aliexpress_dropship_search.py").read_text(encoding="utf-8")
-    status = (ROOT / "app/services/marketplace_supplier_sources.py").read_text(encoding="utf-8")
-    assert "https://api-sg.aliexpress.com/oauth/authorize" in oauth
-    assert 'TOKEN_PATH = "/auth/token/create"' in oauth
-    assert "ALIEXPRESS_SYNC_ENDPOINT = \"https://api-sg.aliexpress.com/sync\"" in search
-    assert 'ALIEXPRESS_TEXT_SEARCH_METHOD = "aliexpress.ds.text.search"' in search
-    assert '"oauth_authorized"' in status
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_connections_exposes_aliexpress_authorize_and_callback():
-    source = (ROOT / "app/routers/connections.py").read_text(encoding="utf-8")
-    assert '/aliexpress/authorize' in source
-    assert '/aliexpress/callback' in source
-    assert "Autorisez maintenant votre compte AliExpress" in source
-    assert "await modern_exchange_aliexpress_authorization" in source
-    assert "await modern_test_aliexpress_connection()" in source
+def test_aliexpress_oauth_routes_are_retired_in_v023():
+    with TestClient(app) as client:
+        authorize = client.get("/api/connections/aliexpress/authorize")
+        callback = client.get("/api/connections/aliexpress/callback")
+        save = client.post("/api/connections/aliexpress", json={"app_key": "old", "app_secret": "old"})
+        test = client.post("/api/connections/aliexpress/test")
+
+    assert authorize.status_code == 410
+    assert callback.status_code == 410
+    assert save.status_code == 410
+    assert test.status_code == 410
+    assert "désactivé" in authorize.json()["detail"].lower()
 
 
-def test_aliexpress_ui_has_explicit_authorization_step():
-    source = (ROOT / "app/static/provider_cleanup.js").read_text(encoding="utf-8")
-    assert "data-authorize-aliexpress" in source
-    assert "Autoriser AliExpress" in source
-    assert "/api/connections/aliexpress/authorize" in source
-    assert "Enregistrer les clés" in source
+def test_aliexpress_is_not_loaded_by_active_supplier_or_market_flows():
+    flow = read("app/routers/supplier_flow.py").lower()
+    hunter = read("app/services/margin_hunter.py").lower()
+    spy = read("app/services/shop_spy_sourcing.py").lower()
+    main = read("app/main.py").lower()
+    worker = read("app/static/service-worker.js").lower()
+
+    assert "aliexpress" not in flow
+    assert "aliexpress" not in hunter
+    assert "aliexpress" not in spy
+    assert "aliexpress_dropship_search" not in main
+    assert "aliexpress" not in worker
 
 
-def test_current_version_registers_aliexpress_assets():
-    main = (ROOT / "app/main.py").read_text(encoding="utf-8")
-    sw = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
-    assert 'VERSION = "' in main
-    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
-    assert f"opsbot-v{version}-shell" in sw
-    assert f"/static/provider_cleanup.js?v={version}" in sw
-    assert f"/static/supplier_flow_v2.js?v={version}" in sw
+def test_cleanup_keeps_aliexpress_explicitly_retired_from_visible_ui():
+    cleanup = read("app/static/provider_cleanup.js").lower()
+    connections = read("app/routers/connections.py").lower()
+    assert "aliexpress" in cleanup
+    assert '"aliexpress"' in connections
+    assert "retired" in connections.lower()
