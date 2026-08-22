@@ -1,34 +1,34 @@
 from pathlib import Path
 
 
-def test_visibility_cleanup_script_keeps_requested_structure():
+def test_visibility_cleanup_retires_old_sources_and_legacy_blocks():
     script = Path("app/static/provider_cleanup.js").read_text(encoding="utf-8")
-    assert "'dropxl'" in script
-    assert "'etsy'" in script
-    assert "sales-channel-panel" in script
+    lower = script.lower()
+    for retired in ("dropxl", "etsy", "amazon", "aliexpress", "tiktok", "youtube"):
+        assert retired in lower
     assert "supplier-network" in script
     assert "niche-directory-panel" in script
-    assert "#section-radar #radarSources" in script
+    assert "#radarSources" in script
     assert 'data-section="pipeline"' in script
     assert "#section-pipeline" in script
-    assert 'data-supplier-tab="cj"' in script
-    assert 'data-supplier-tab="amazon"' in script
-    assert 'data-supplier-tab="aliexpress"' in script
+    assert "keepCJOnly" in script
 
 
-def test_supplier_source_search_supports_amazon_and_aliexpress():
+def test_supplier_source_search_supports_only_cj():
     router = Path("app/routers/suppliers.py").read_text(encoding="utf-8")
     assert '@router.get("/source-search")' in router
-    assert "amazon_supplier_offers" in router
-    assert "aliexpress_dropship_supplier_offers" in router
-    assert 'provider == "amazon"' in router
+    assert 'Query(pattern="^cj$")' in router
+    assert "CJClient" in router
+    assert "amazon_supplier_offers" not in router
+    assert "aliexpress_dropship_supplier_offers" not in router
 
 
-def test_supplier_hub_is_reduced_to_three_api_sources():
+def test_supplier_hub_is_reduced_to_one_active_source():
     router = Path("app/routers/suppliers.py").read_text(encoding="utf-8")
     hub = router.split('@router.get("/hub")', 1)[1].split('@router.get("/source-search")', 1)[0]
     assert '"id": "cj"' in hub
-    assert '"name": "Amazon France"' in hub
-    assert "aliexpress_supplier_status()" in hub
-    assert 'for provider_id in ("dropxl"' not in hub
-    assert "ASSISTED_SUPPLIERS" not in hub
+    assert '"name": "CJ Dropshipping"' in hub
+    assert '"providers": [provider]' in hub
+    assert '"operating_mode": "EBAY_US_CJ_ONLY"' in hub
+    assert "Amazon France" not in hub
+    assert "aliexpress_supplier_status" not in hub
