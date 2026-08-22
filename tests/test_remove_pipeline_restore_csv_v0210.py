@@ -11,17 +11,17 @@ def test_pipeline_frontend_removed():
     assert 'ensurePipelineSection' not in provider
     assert "pipeline:" not in workflow
     assert "'pipeline', 'catalog'" not in workflow
-    assert "document.querySelector('[data-section=\"pipeline\"]')?.remove()" in workflow
-    assert "document.querySelector('#section-pipeline')?.remove()" in workflow
+    assert 'data-section="pipeline"' in provider
+    assert '#section-pipeline' in provider
 
 
-def test_manual_supplier_csv_is_restored_at_bottom():
+def test_manual_supplier_csv_is_hidden_in_cj_only_mode():
     provider = Path('app/static/provider_cleanup.js').read_text(encoding='utf-8')
 
-    assert "restoreManualSupplierBlock" in provider
-    assert "section.appendChild(manual)" in provider
-    assert "Ajouter un fournisseur manuel ou importer un CSV" in provider
-    assert "section.querySelector('#section-suppliers .supplier-directory')?.remove()" not in provider
+    assert "restoreManualSupplierBlock" not in provider
+    assert "hide(section.querySelector('.supplier-directory'))" in provider
+    assert "hide(section.querySelector('.manual-supplier-fallback'))" in provider
+    assert "importer csv" in provider.lower()
 
 
 def test_current_version_keeps_pipeline_assets_out_of_pwa():
