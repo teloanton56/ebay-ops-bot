@@ -55,5 +55,5 @@ def test_frontend_removes_retired_sources_and_keeps_cj_ebay_copy():
         assert retired in connections
     assert "cj dropshipping" in workflow
     assert "ebay us" in workflow
-    assert "providers": [provider] if False else True
+    assert '"providers": [provider]' in suppliers
     assert '"operating_mode": "ebay_us_cj_only"' in suppliers
