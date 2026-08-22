@@ -99,8 +99,10 @@ class CJClient:
     async def search_products(self, *, keyword: str = "", page: int = 1, size: int = 20,
                               category_id: str = "", country_code: str = "", min_price: float | None = None,
                               max_price: float | None = None, min_stock: int = 1, order_by: int = 0) -> dict:
-        params = {"page": page, "size": size, "keyWord": keyword, "startWarehouseInventory": min_stock,
+        params = {"page": page, "size": min(max(int(size), 1), 100), "keyWord": keyword,
                   "orderBy": order_by, "sort": "desc", "features": "enable_category"}
+        if min_stock and int(min_stock) > 0:
+            params["startWarehouseInventory"] = int(min_stock)
         optional = {"categoryId": category_id, "countryCode": country_code,
                     "startSellPrice": min_price, "endSellPrice": max_price}
         params.update({k: v for k, v in optional.items() if v not in (None, "")})
@@ -119,12 +121,77 @@ class CJClient:
         return {"page": data.get("pageNumber", page), "total": data.get("totalRecords", len(products)),
                 "total_pages": data.get("totalPages", 1), "products": products}
 
+    @staticmethod
+    def _normalize_inventory(item: dict) -> dict:
+        stock_rows = item.get("stock") or []
+        storage_ids = []
+        for row in stock_rows:
+            stock_id = str(row.get("stockId") or "").strip()
+            if stock_id and stock_id not in storage_ids:
+                storage_ids.append(stock_id)
+        total = item.get("totalInventory")
+        if total is None:
+            total = item.get("totalInventoryNum")
+        if total is None:
+            total = item.get("storageNum")
+        return {
+            "country_code": str(item.get("countryCode") or "").upper(),
+            "stock": int(total or 0),
+            "cj_stock": int(item.get("cjInventory") or item.get("cjInventoryNum") or 0),
+            "factory_stock": int(item.get("factoryInventory") or item.get("factoryInventoryNum") or 0),
+            "verified_warehouse": int(item.get("verifiedWarehouse") or 0),
+            "storage_ids": storage_ids,
+        }
+
+    async def product_inventory(self, pid: str) -> dict:
+        """Return CJ's dedicated product/variant inventory snapshot."""
+        payload = await self.request("GET", "/product/stock/getInventoryByPid", params={"pid": pid})
+        data = payload.get("data") or {}
+        product_inventories = [
+            self._normalize_inventory(row)
+            for row in (data.get("inventories") or [])
+            if str(row.get("countryCode") or "").strip()
+        ]
+        variant_inventories: dict[str, list[dict]] = {}
+        for row in data.get("variantInventories") or []:
+            vid = str(row.get("vid") or "").strip()
+            if not vid:
+                continue
+            variant_inventories[vid] = [
+                self._normalize_inventory(item)
+                for item in (row.get("inventory") or [])
+                if str(item.get("countryCode") or "").strip()
+            ]
+        return {
+            "pid": pid,
+            "product_inventories": product_inventories,
+            "variant_inventories": variant_inventories,
+        }
+
+    async def variant_inventory(self, vid: str) -> list[dict]:
+        """Fetch inventory + sub-warehouse IDs for one CJ variant when PID inventory is incomplete."""
+        payload = await self.request(
+            "GET",
+            "/product/variant/queryByVid",
+            params={"vid": vid, "features": "enable_inventory"},
+        )
+        data = payload.get("data") or {}
+        return [
+            self._normalize_inventory(row)
+            for row in (data.get("inventories") or [])
+            if str(row.get("countryCode") or "").strip()
+        ]
+
     async def product_detail(self, pid: str) -> dict:
         payload = await self.request("GET", "/product/query", params={"pid": pid})
         data = payload.get("data") or {}
         variants = []
         for item in data.get("variants") or []:
-            inventories = item.get("inventories") or []
+            inventories = [
+                self._normalize_inventory(row)
+                for row in (item.get("inventories") or [])
+                if str(row.get("countryCode") or "").strip()
+            ]
             variants.append({
                 "vid": item.get("vid"),
                 "name": item.get("variantNameEn") or item.get("variantSku") or "Variante CJ",
@@ -135,9 +202,8 @@ class CJClient:
                 "length_mm": self._number(item.get("variantLength")),
                 "width_mm": self._number(item.get("variantWidth")),
                 "height_mm": self._number(item.get("variantHeight")),
-                "stock": sum(int(x.get("totalInventory") or 0) for x in inventories),
-                "inventories": [{"country_code": x.get("countryCode"),
-                                  "stock": int(x.get("totalInventory") or 0)} for x in inventories],
+                "stock": sum(int(x.get("stock") or 0) for x in inventories),
+                "inventories": inventories,
             })
         variants.sort(key=lambda x: (x["price_usd"] <= 0, x["price_usd"], x["name"]))
         detail = {
@@ -157,26 +223,114 @@ class CJClient:
         detail["risk_flags"] = self.compliance_flags(detail)
         return detail
 
+    @staticmethod
+    def _freight_row(item: dict, *, tip: bool = False) -> dict | None:
+        if tip:
+            base_raw = item.get("wrapPostage")
+            if base_raw is None:
+                base_raw = item.get("discountFee")
+            if base_raw is None:
+                base_raw = item.get("postage")
+            quoted_total = item.get("totalPostageFee")
+            if base_raw is None and quoted_total is None:
+                return None
+            base = CJClient._number(base_raw)
+            taxes = CJClient._number(item.get("taxesFee"))
+            clearance = CJClient._number(item.get("clearanceOperationFee"))
+            tariff = CJClient._number(item.get("tariff"))
+            total = (
+                CJClient._number(quoted_total)
+                if quoted_total is not None
+                else round(base + taxes + clearance + tariff, 2)
+            )
+            option = item.get("option") or {}
+            channel = item.get("channel") or {}
+            return {
+                "name": option.get("enName") or channel.get("enName") or "Transport CJ",
+                "price_usd": total,
+                "base_price_usd": base,
+                "taxes_usd": taxes,
+                "clearance_usd": clearance,
+                "tariff_usd": tariff,
+                "delivery_days": item.get("arrivalTime") or option.get("arrivalTime") or "Non indiqué",
+                "source": "freightCalculateTip",
+            }
+
+        price_fields = ("totalPostageFee", "logisticPrice", "taxesFee", "clearanceOperationFee")
+        if not any(item.get(key) is not None for key in price_fields):
+            return None
+        base = CJClient._number(item.get("logisticPrice"))
+        taxes = CJClient._number(item.get("taxesFee"))
+        clearance = CJClient._number(item.get("clearanceOperationFee"))
+        quoted_total = item.get("totalPostageFee")
+        total = CJClient._number(quoted_total) if quoted_total is not None else round(base + taxes + clearance, 2)
+        return {"name": item.get("logisticName") or "Transport CJ",
+                "price_usd": total, "base_price_usd": base,
+                "taxes_usd": taxes, "clearance_usd": clearance,
+                "delivery_days": item.get("logisticAging") or "Non indiqué",
+                "source": "freightCalculate"}
+
     async def freight_options(self, vid: str, *, start_country: str = "CN",
-                              destination_country: str = "FR", postcode: str = "") -> list[dict]:
+                              destination_country: str = "FR", postcode: str = "",
+                              storage_ids: list[str] | None = None) -> list[dict]:
         body = {"startCountryCode": start_country, "endCountryCode": destination_country,
                 "products": [{"quantity": 1, "vid": vid}]}
+        clean_storage_ids = [str(value).strip() for value in (storage_ids or []) if str(value).strip()]
+        if clean_storage_ids:
+            body["storageIdList"] = clean_storage_ids[:100]
         if postcode.strip():
             body["zip"] = postcode.strip()
         payload = await self.request("POST", "/logistic/freightCalculate", json_body=body)
-        rows = []
-        for item in payload.get("data") or []:
-            base = self._number(item.get("logisticPrice"))
-            taxes = self._number(item.get("taxesFee"))
-            clearance = self._number(item.get("clearanceOperationFee"))
-            quoted_total = self._number(item.get("totalPostageFee"))
-            total = quoted_total or round(base + taxes + clearance, 2)
-            if total > 0:
-                rows.append({"name": item.get("logisticName") or "Transport CJ",
-                             "price_usd": total, "base_price_usd": base,
-                             "taxes_usd": taxes, "clearance_usd": clearance,
-                             "delivery_days": item.get("logisticAging") or "Non indiqué"})
-        return sorted(rows, key=lambda x: (x["price_usd"], x["name"]))
+        rows = [self._freight_row(item) for item in (payload.get("data") or [])]
+        return sorted([row for row in rows if row is not None], key=lambda x: (x["price_usd"], x["name"]))
+
+    async def freight_options_tip(self, variant: dict, detail: dict, *, start_country: str = "CN",
+                                  destination_country: str = "US", postcode: str = "",
+                                  storage_ids: list[str] | None = None) -> list[dict]:
+        """Fallback to CJ's richer freight trial endpoint when simple freight has no route."""
+        sku = str(variant.get("sku") or "").strip()
+        vid = str(variant.get("vid") or "").strip()
+        if not sku or not vid:
+            return []
+        weight = max(float(variant.get("weight_g") or detail.get("packing_weight_g") or detail.get("weight_g") or 0), 1.0)
+        length_cm = float(variant.get("length_mm") or 0) / 10.0
+        width_cm = float(variant.get("width_mm") or 0) / 10.0
+        height_cm = float(variant.get("height_mm") or 0) / 10.0
+        volume = max(length_cm * width_cm * height_cm, 0.01)
+        properties = [str(value).strip().upper() for value in (detail.get("logistics_properties") or []) if str(value).strip()]
+        properties = properties or ["COMMON"]
+        req = {
+            "srcAreaCode": start_country,
+            "destAreaCode": destination_country,
+            "wrapWeight": round(weight, 2),
+            "weight": round(weight, 2),
+            "volume": round(volume, 2),
+            "productProp": properties,
+            "skuList": [sku],
+            "totalGoodsAmount": round(float(variant.get("price_usd") or 0), 2),
+            "freightTrialSkuList": [{
+                "skuQuantity": 1,
+                "sku": sku,
+                "vid": vid,
+                "skuWeight": round(weight, 2),
+                "skuVolume": round(volume, 2),
+                "productPropList": properties,
+            }],
+        }
+        if length_cm > 0 and width_cm > 0 and height_cm > 0:
+            req.update({
+                "length": round(length_cm, 2),
+                "width": round(width_cm, 2),
+                "height": round(height_cm, 2),
+            })
+        clean_storage_ids = [str(value).strip() for value in (storage_ids or []) if str(value).strip()]
+        if clean_storage_ids:
+            req["storageIdList"] = clean_storage_ids[:100]
+        if postcode.strip():
+            req["zip"] = postcode.strip()
+        payload = await self.request("POST", "/logistic/freightCalculateTip", json_body={"reqDTOS": [req]})
+        rows = [self._freight_row(item, tip=True) for item in (payload.get("data") or [])]
+        return sorted([row for row in rows if row is not None], key=lambda x: (x["price_usd"], x["name"]))
 
     async def usd_to_eur(self) -> dict:
         try:

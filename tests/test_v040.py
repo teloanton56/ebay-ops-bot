@@ -177,7 +177,7 @@ def test_source_statuses_and_future_rfq_copy_are_us_focused():
 def test_active_shell_identifies_v023_us_cj_mode():
     html = TestClient(app).get("/").text
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
-    assert app.version == "0.23.0"
+    assert app.version == "0.23.1"
     assert "eBay US" in html
     assert "CJ Dropshipping" in html
     assert "EBAY_US_CJ_ONLY" in main

@@ -139,7 +139,23 @@ def test_unified_cj_resolver_prefers_us_route_and_uses_usd_without_conversion():
                 }],
             }
 
-        async def freight_options(self, vid, *, start_country, destination_country):
+        async def product_inventory(self, pid):
+            assert pid == "pid-1"
+            return {
+                "pid": pid,
+                "product_inventories": [
+                    {"country_code": "US", "stock": 18},
+                    {"country_code": "CN", "stock": 10},
+                ],
+                "variant_inventories": {
+                    "variant-1": [
+                        {"country_code": "US", "stock": 18, "storage_ids": []},
+                        {"country_code": "CN", "stock": 10, "storage_ids": []},
+                    ],
+                },
+            }
+
+        async def freight_options(self, vid, *, start_country, destination_country, storage_ids=None):
             self.freight_calls.append((vid, start_country, destination_country))
             assert destination_country == "US"
             if start_country == "US":
