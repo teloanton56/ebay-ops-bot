@@ -5,6 +5,7 @@ from app.services.cj import CJClient, CJError
 from app.services.cj_landed import resolve_cj_landed_offer, route_requirements, save_cj_product_link
 from app.services.db import list_suppliers, save_supplier, upsert_product
 from app.services.profit import suggest_price
+from app.services.radar import analyze_ebay_market
 from app.services.supplier_relevance import rank_supplier_results
 
 router = APIRouter(prefix="/api/supplier-flow", tags=["Supplier Flow"])
@@ -26,10 +27,7 @@ class OfferIn(BaseModel):
 
 def _no_relevant_message(keyword: str, raw_count: int) -> dict:
     suffix = f" ({raw_count} résultat(s) hors sujet ignoré(s))" if raw_count else ""
-    return {
-        "source": "CJ",
-        "message": f"Aucun produit CJ pertinent trouvé pour « {keyword} »{suffix}",
-    }
+    return {"source": "CJ", "message": f"Aucun produit CJ pertinent trouvé pour « {keyword} »{suffix}"}
 
 
 async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
@@ -37,13 +35,11 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
         client = CJClient()
         if not client.status().get("connected"):
             return None, [{"source": "CJ", "message": "CJ n'est pas connecté"}]
-
         result = await client.search_products(keyword=keyword, size=50, min_stock=1, order_by=0)
         raw_products = result.get("products") or []
         relevant, rejected = rank_supplier_results(keyword, raw_products, title_keys=("name",), limit=20)
         if not relevant:
             return None, [_no_relevant_message(keyword, len(raw_products))]
-
         rows = []
         for product in relevant:
             rows.append({
@@ -56,23 +52,18 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
                 "currency": "USD",
                 "stock": product.get("stock"),
                 "shipping_days": None,
-                "warehouse": "US prioritaire · CN fallback",
+                "warehouse": "US prioritaire · CN fallback rentable",
                 "image_url": product.get("image_url") or "",
                 "source_url": "",
                 "match_strength": product.get("match_strength"),
                 "quality_evidence": [
                     f"Pertinence recherche : {float(product.get('match_strength') or 0) * 100:.0f}%",
                     f"Stock CJ global observé : {product.get('stock', 0)}",
-                    "À l'ajout : vérification stock US, puis Chine si la route US n'est pas exploitable.",
-                    "Le coût livré est calculé vers les États-Unis en USD avant ajout au catalogue.",
+                    "Le stock exact US/CN et le transport vers les États-Unis sont vérifiés à l'ajout.",
+                    "Une route Chine nécessite aussi une marge eBay US suffisante.",
                 ],
             })
-        return {
-            "source": "CJ",
-            "products": rows,
-            "total": len(rows),
-            "filtered_out": rejected,
-        }, []
+        return {"source": "CJ", "products": rows, "total": len(rows), "filtered_out": rejected}, []
     except Exception as exc:
         return None, [{"source": "CJ", "message": str(exc)}]
 
@@ -88,7 +79,7 @@ async def compare(q: str = Query(min_length=2, max_length=120)):
         "queried": ["CJ"],
         "market": "EBAY_US",
         "currency": "USD",
-        "note": "Sourcing volontairement limité à CJ Dropshipping pour le lancement eBay US.",
+        "note": "Sourcing limité à CJ Dropshipping : stock US prioritaire, Chine uniquement si l'économie eBay US le justifie.",
     }
 
 
@@ -102,7 +93,7 @@ def _supplier_for_cj() -> int:
         "email": "",
         "website": "https://cjdropshipping.com/",
         "country": "US",
-        "notes": "Fournisseur unique v0.23 : entrepôts US prioritaires, Chine en fallback rentable.",
+        "notes": "Fournisseur unique v0.23 : US prioritaire, Chine en fallback rentable.",
         "provider_code": "cj",
         "supplier_type": "API",
         "catalog_url": "",
@@ -113,34 +104,56 @@ def _supplier_for_cj() -> int:
     }))
 
 
+async def _market_reference(title: str) -> float | None:
+    try:
+        market = await analyze_ebay_market(title, "EBAY_US")
+        if str(market.get("currency") or "USD").upper() != "USD":
+            return None
+        value = market.get("median_price")
+        return round(float(value), 2) if value is not None and float(value) > 0 else None
+    except Exception:
+        return None
+
+
 async def _add_cj_offer(payload: OfferIn, supplier_id: int, sku: str) -> dict:
     if not payload.cj_pid:
         raise HTTPException(400, "Identifiant produit CJ manquant. Relancez la recherche avant l'ajout.")
 
     client = CJClient()
     try:
+        reference_price = await _market_reference(payload.name)
         landed = await resolve_cj_landed_offer(
             client,
             payload.cj_pid,
             fallback_price_usd=payload.price,
             destination_country="US",
+            reference_price=reference_price,
         )
-        requirements = route_requirements(str(landed.get("warehouse") or "US"))
+        warehouse = str(landed.get("warehouse") or "").upper()
+        requirements = route_requirements(warehouse or "US")
+        if not landed.get("eligible"):
+            raise CJError(
+                f"La route CJ {warehouse or 'inconnue'} ne respecte pas les seuils stock/délai/marge du lancement eBay US"
+            )
+        if warehouse == "CN" and reference_price is None:
+            raise CJError(
+                "Route Chine refusée : le bot n'a pas de prix eBay US fiable pour prouver que la marge compense le délai"
+            )
+
         pricing = suggest_price(
             {"supplier_cost": landed["supplier_cost"], "shipping_cost": landed["shipping_cost"]},
+            reference_price,
             min_margin_percent=float(requirements["min_margin_percent"]),
             min_profit=float(requirements["min_profit"]),
         )
         image = landed.get("image_url") or payload.image_url
-        warehouse = str(landed.get("warehouse") or "")
         route_label = "CJ US" if warehouse == "US" else "CJ China → US"
         product_id = upsert_product({
             "supplier_sku": sku,
             "title": payload.name,
             "description": (
                 f"CJ Dropshipping · route {route_label}. Variante {landed.get('variant_sku') or landed.get('variant_id')}. "
-                f"Transport vers les États-Unis : {landed.get('freight_name') or 'CJ'}. "
-                "Stock, coût et délai sont revalidés avant toute écriture eBay."
+                f"Transport US : {landed.get('freight_name') or 'CJ'}. Stock, coût et délai revalidés avant écriture eBay."
             ),
             "supplier_cost": landed["supplier_cost"],
             "shipping_cost": landed["shipping_cost"],
@@ -165,6 +178,7 @@ async def _add_cj_offer(payload: OfferIn, supplier_id: int, sku: str) -> dict:
             "landed_cost": landed["landed_cost"],
             "shipping_days": landed["shipping_days"],
             "target_price": pricing["suggested_price"],
+            "market_reference_price": reference_price,
             "warehouse": warehouse,
             "route": route_label,
             "variant_id": landed["variant_id"],
