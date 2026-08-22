@@ -9,7 +9,7 @@ from app.services.cloud_auth import public_path
 
 
 ENDPOINT = "https://ebay-ops-bot.onrender.com/api/ebay/account-deletion"
-TOKEN = "elmHFtX9v7eY3YdBkJO5vY_fARVpx8Dw6S6ib-1d98Ar-p_e"
+TOKEN = "test_verification_token_1234567890ABCDE"
 SIGNATURE_HEADERS = {"X-EBAY-SIGNATURE": "test-signature-header"}
 
 
@@ -23,6 +23,14 @@ def _configure_cloud(monkeypatch, tmp_path):
     monkeypatch.setenv("EBAY_ACCOUNT_DELETION_ENDPOINT", ENDPOINT)
     monkeypatch.setenv("EBAY_ACCOUNT_DELETION_VERIFICATION_TOKEN", TOKEN)
     get_settings.cache_clear()
+
+
+async def _accept_signature(*args, **kwargs):
+    return True
+
+
+async def _reject_signature(*args, **kwargs):
+    return False
 
 
 def test_ebay_challenge_endpoint_is_public_and_matches_required_hash(monkeypatch, tmp_path):
@@ -48,8 +56,22 @@ def test_account_deletion_notification_requires_signature_header(monkeypatch, tm
     get_settings.cache_clear()
 
 
+def test_account_deletion_notification_rejects_invalid_signature(monkeypatch, tmp_path):
+    _configure_cloud(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.routers.ebay_compliance.verify_notification_signature", _reject_signature)
+    payload = {
+        "metadata": {"topic": "MARKETPLACE_ACCOUNT_DELETION"},
+        "notification": {"notificationId": "notification-invalid", "data": {}},
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/ebay/account-deletion", json=payload, headers=SIGNATURE_HEADERS)
+    assert response.status_code == 412
+    get_settings.cache_clear()
+
+
 def test_account_deletion_notification_removes_matching_ebay_support_data_idempotently(monkeypatch, tmp_path):
     _configure_cloud(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.routers.ebay_compliance.verify_notification_signature", _accept_signature)
     now = "2026-08-21T16:00:00+00:00"
     payload = {
         "metadata": {
