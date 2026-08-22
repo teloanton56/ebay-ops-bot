@@ -217,11 +217,12 @@ def test_shop_spy_browse_call_is_for_ebay_us(monkeypatch):
 def test_main_and_pwa_do_not_load_old_multi_source_radar():
     main = read("app/main.py")
     service_worker = read("app/static/service-worker.js")
-    assert 'VERSION = "0.23.0"' in main
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
+    assert version == "0.23.1"
     assert "auto_radar.router" not in main
     assert "auto_radar.js" not in main
     assert "tiered_radar.js" not in main
-    assert "opsbot-v0.23.0-shell" in service_worker
+    assert f"opsbot-v{version}-shell" in service_worker
     assert "auto_radar.js" not in service_worker
     assert "tiered_radar.js" not in service_worker
 
