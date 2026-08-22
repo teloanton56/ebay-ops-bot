@@ -19,38 +19,34 @@ def supplier_for_product(product: dict[str, Any]) -> dict[str, Any] | None:
 
 
 async def refresh_product_from_supplier(product: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Refresh the supplier facts that can change before an eBay write.
+    """Refresh the exact CJ route immediately before a real eBay write.
 
-    CJ is the only current first-class supplier for which the bot can re-check
-    variant, stock, freight and delivery end-to-end. Marketplace sources remain
-    research/sourcing inputs until equivalent fulfillment verification exists.
+    v0.23 never switches a live product silently from US to China or vice versa,
+    because that would change item location and delivery promises on eBay.
     """
     if not product or not product.get("id"):
         raise SupplierRefreshError("Produit introuvable pour revalidation fournisseur")
 
     supplier = supplier_for_product(product)
     code = str((supplier or {}).get("provider_code") or "").strip().lower()
-    if not code:
-        raise SupplierRefreshError("Fournisseur non vérifiable automatiquement avant publication")
-    if code in {"amazon", "aliexpress"}:
-        raise SupplierRefreshError(
-            f"{(supplier or {}).get('name') or code.title()} ne fournit pas encore au bot une revalidation complète "
-            "stock + transport France + délai. Utilisez cette source pour le sourcing, pas pour une publication directe."
-        )
     if code != "cj":
-        raise SupplierRefreshError(f"Revalidation live non implémentée pour le fournisseur {code}")
+        raise SupplierRefreshError("v0.23 autorise uniquement CJ Dropshipping avant publication eBay")
 
     link = load_cj_product_link(str(product.get("supplier_sku") or ""))
     pid = str(link.get("pid") or "").strip()
-    if not pid:
+    warehouse = str(link.get("warehouse") or "").upper()
+    if not pid or warehouse not in {"US", "CN"}:
         raise SupplierRefreshError(
-            "Ce produit CJ a été ajouté avant l'enregistrement du lien produit CJ. "
-            "Relancez-le depuis Fournisseurs ou Margin Hunter puis ajoutez-le à nouveau avant publication."
+            "Ce produit n'a pas de route CJ US/CN enregistrée. Relancez-le depuis CJ ou Margin Hunter avant publication."
         )
 
     client = CJClient()
     if not client.status().get("connected"):
-        raise SupplierRefreshError("CJ n'est pas connecté : publication bloquée tant que le fournisseur n'est pas revalidé")
+        raise SupplierRefreshError("CJ n'est pas connecté : publication bloquée")
+
+    target_price = float(product.get("target_price") or 0)
+    if target_price <= 0:
+        raise SupplierRefreshError("Prix eBay cible manquant avant revalidation CJ")
 
     try:
         landed = await resolve_cj_landed_offer(
@@ -58,9 +54,25 @@ async def refresh_product_from_supplier(product: dict[str, Any]) -> tuple[dict[s
             pid,
             fallback_price_usd=0,
             preferred_variant_id=str(link.get("variant_id") or ""),
+            preferred_warehouse=warehouse,
+            destination_country="US",
+            reference_price=target_price,
         )
     except CJError as exc:
         raise SupplierRefreshError(f"Revalidation CJ impossible : {exc}") from exc
+
+    if str(landed.get("warehouse") or "").upper() != warehouse:
+        raise SupplierRefreshError(
+            f"La route CJ {warehouse} n'est plus exploitable. Le bot refuse de basculer automatiquement "
+            "vers un autre pays d'expédition ; ressourcez le produit avant publication."
+        )
+    if not landed.get("eligible"):
+        req = landed.get("requirements") or {}
+        raise SupplierRefreshError(
+            f"Route CJ {warehouse} hors seuils : stock {landed.get('stock')} · délai {landed.get('shipping_days')}j. "
+            f"Minimum attendu : stock {req.get('min_stock')} · marge {req.get('min_margin_percent')}% · "
+            f"profit ${req.get('min_profit')} · délai ≤ {req.get('max_shipping_days')}j."
+        )
 
     refreshed_data = {
         **product,
@@ -68,7 +80,8 @@ async def refresh_product_from_supplier(product: dict[str, Any]) -> tuple[dict[s
         "shipping_cost": landed["shipping_cost"],
         "stock": landed["stock"],
         "shipping_days": landed["shipping_days"],
-        "currency": "EUR",
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
     }
     product_id = upsert_product(refreshed_data)
     save_cj_product_link(str(product.get("supplier_sku") or ""), landed)
@@ -78,14 +91,18 @@ async def refresh_product_from_supplier(product: dict[str, Any]) -> tuple[dict[s
 
     return refreshed, {
         "provider": "cj",
-        "provider_name": (supplier or {}).get("name") or "CJ Dropshipping",
+        "provider_name": "CJ Dropshipping",
         "verified": True,
         "supplier_cost": landed["supplier_cost"],
         "shipping_cost": landed["shipping_cost"],
         "landed_cost": landed["landed_cost"],
         "stock": landed["stock"],
         "shipping_days": landed["shipping_days"],
-        "warehouse": landed["warehouse"],
+        "warehouse": warehouse,
+        "route": "CJ US" if warehouse == "US" else "CJ China → US",
         "variant_id": landed["variant_id"],
         "freight_name": landed["freight_name"],
+        "requirements": landed.get("requirements") or {},
+        "profit": landed.get("profit"),
+        "currency": "USD",
     }
