@@ -1,24 +1,28 @@
 from pathlib import Path
 
 
-def test_workflow_cleanup_targets_core_dropshipping_flow():
+def test_workflow_cleanup_targets_single_channel_single_supplier_flow():
     source = Path('app/static/workflow_cleanup.js').read_text(encoding='utf-8')
-    assert "CJ · Amazon · AliExpress" in source
+    assert "eBay US → CJ → cash-flow" in source
     assert "checklist de lancement" in source
     assert "que voulez-vous faire" in source
-    assert "input[name=\"radar_source\"][value=\"etsy\"]" in source
-    assert "section.querySelector('.opportunity-inbox')?.remove()" in source
-    assert "['overview', 'radar', 'suppliers', 'catalog', 'ebay', 'support', 'finance', 'connections', 'settings', 'help']" in source
-    assert "'pipeline', 'catalog'" not in source
+    assert "['overview', 'radar', 'shop-spy', 'suppliers', 'catalog', 'ebay', 'support', 'finance', 'connections', 'settings', 'help']" in source
+    assert "Radar US" in source
+    assert "CJ Dropshipping" in source
+    assert "eBay US" in source
+    assert "TikTok" not in source
+    assert "YouTube" not in source
+    assert "Amazon" not in source
+    assert "AliExpress" not in source
 
 
-def test_supplier_match_is_limited_to_three_active_suppliers():
+def test_supplier_match_is_limited_to_cj():
     source = Path('app/routers/radar.py').read_text(encoding='utf-8')
-    assert 'amazon_supplier_offers' in source
-    assert 'aliexpress_supplier_offers' in source
-    assert 'Connectez CJ, Amazon ou AliExpress' in source
-    assert 'Comparaison limitée aux trois fournisseurs actifs du bot' in source
-    assert 'DropXL' not in source
+    assert "CJClient" in source
+    assert "Connectez CJ avant de rechercher un fournisseur" in source
+    assert "amazon_supplier_offers" not in source
+    assert "aliexpress" not in source.lower()
+    assert "DropXL" not in source
 
 
 def test_current_workflow_is_registered_in_pwa():
