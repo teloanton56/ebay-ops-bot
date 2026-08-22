@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.routers import (auth, auto_radar, automation, channels, cj, cloud, connections, ebay,
+from app.routers import (auth, auto_radar, automation, channels, cj, cloud, compliance, connections, ebay,
                          ebay_compliance, finance, opportunity_center, products, radar, research,
                          settings, shop_spy, supplier_flow, suppliers, support, taxonomy, ui)
 from app.services.cloud_auth import COOKIE_NAME, allowed_hosts, allowed_origins, public_path, session_email, validate_cloud_configuration
@@ -16,7 +16,7 @@ from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.21.14"
+VERSION = "0.22.0"
 # Compatibility baseline retained: v0.14.3 introduced the simplified real-data dashboard.
 
 
@@ -37,6 +37,7 @@ app.include_router(cloud.router)
 app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(ebay.router)
+app.include_router(compliance.router)
 app.include_router(research.router)
 app.include_router(taxonomy.router)
 app.include_router(automation.router)
