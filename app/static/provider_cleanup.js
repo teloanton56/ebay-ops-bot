@@ -6,6 +6,7 @@
     'printful', 'printify', 'gelato', 'google trends', 'meta'
   ];
   let supplierFilterObserver = null;
+  let modalObserver = null;
 
   function hide(node) {
     if (!node) return;
@@ -74,6 +75,14 @@
     hide(document.querySelector('#section-ebay .sales-channel-panel'));
   }
 
+  function keepCJOnly(select) {
+    if (!select) return;
+    [...select.options].forEach(option => {
+      const text = String(option.textContent || '').toLowerCase();
+      if (option.value && !text.includes('cj')) option.remove();
+    });
+  }
+
   function simplifyProducts() {
     const section = document.querySelector('#section-catalog');
     if (!section) return;
@@ -85,38 +94,38 @@
 
     const select = section.querySelector('#filterSupplier');
     if (select) {
-      const keepCJOnly = () => {
-        [...select.options].forEach(option => {
-          const text = String(option.textContent || '').toLowerCase();
-          if (option.value && !text.includes('cj')) option.remove();
-        });
-        if ([...select.options].some(option => option.value)) {
-          select.options[0].textContent = 'CJ Dropshipping';
-        }
+      const normalize = () => {
+        keepCJOnly(select);
+        if ([...select.options].some(option => option.value)) select.options[0].textContent = 'CJ Dropshipping';
       };
-      keepCJOnly();
+      normalize();
       if (!supplierFilterObserver) {
-        supplierFilterObserver = new MutationObserver(keepCJOnly);
+        supplierFilterObserver = new MutationObserver(normalize);
         supplierFilterObserver.observe(select, { childList: true });
       }
     }
   }
 
+  function lockSelect(select, value, label) {
+    if (!select) return;
+    if (![...select.options].some(option => option.value === value || option.textContent === value)) {
+      select.add(new Option(label || value, value));
+    }
+    const option = [...select.options].find(row => row.value === value || row.textContent === value);
+    if (option) option.value = value;
+    select.value = value;
+    select.disabled = true;
+  }
+
   function simplifySettings() {
     const marketplace = document.querySelector('#marketplaceId');
     if (marketplace) {
-      if (![...marketplace.options].some(option => option.value === 'EBAY_US')) {
-        marketplace.add(new Option('EBAY_US', 'EBAY_US'));
-      }
-      marketplace.value = 'EBAY_US';
-      marketplace.disabled = true;
+      lockSelect(marketplace, 'EBAY_US', 'EBAY_US');
       marketplace.title = 'Le mode v0.23 est verrouillé sur eBay US';
     }
     const currency = document.querySelector('#currency');
     if (currency) {
-      if (![...currency.options].some(option => option.value === 'USD')) currency.add(new Option('USD', 'USD'));
-      currency.value = 'USD';
-      currency.disabled = true;
+      lockSelect(currency, 'USD', 'USD');
       currency.title = 'Le mode v0.23 utilise uniquement USD';
     }
     const riskForm = document.querySelector('#riskSettingsForm');
@@ -124,6 +133,40 @@
     if (profit?.closest('label')) profit.closest('label').childNodes[0].textContent = 'Profit minimum ($)';
     const fixed = riskForm?.elements?.fixed_fee;
     if (fixed?.closest('label')) fixed.closest('label').childNodes[0].textContent = 'Frais eBay par commande ($)';
+  }
+
+  function normalizeProductModal() {
+    const modal = document.querySelector('#modalBody');
+    if (!modal) return;
+    const form = modal.querySelector('#productForm, form[data-id]');
+    if (!form) return;
+
+    modal.querySelectorAll('label').forEach(label => {
+      const first = label.childNodes?.[0];
+      if (!first || first.nodeType !== Node.TEXT_NODE) return;
+      first.textContent = String(first.textContent || '')
+        .replace('Coût fournisseur (€)', 'Coût fournisseur ($)')
+        .replace('Livraison (€)', 'Livraison ($)')
+        .replace('Prix eBay visé (€)', 'Prix eBay US visé ($)');
+    });
+
+    const marketplace = form.elements?.marketplace_id;
+    if (marketplace) lockSelect(marketplace, 'EBAY_US', 'EBAY_US');
+    const supplier = form.elements?.supplier_id;
+    if (supplier) keepCJOnly(supplier);
+
+    const hint = modal.querySelector('.info-box');
+    if (hint && String(hint.textContent || '').includes('marketplace')) {
+      hint.textContent = 'Mode verrouillé : eBay US · USD · CJ Dropshipping.';
+    }
+  }
+
+  function watchModal() {
+    const modal = document.querySelector('#modalBody');
+    if (!modal || modalObserver) return;
+    modalObserver = new MutationObserver(() => normalizeProductModal());
+    modalObserver.observe(modal, { childList: true, subtree: true });
+    normalizeProductModal();
   }
 
   function removePipelineRemnants() {
@@ -140,6 +183,7 @@
     simplifySales();
     simplifyProducts();
     simplifySettings();
+    watchModal();
     removePipelineRemnants();
   }
 
