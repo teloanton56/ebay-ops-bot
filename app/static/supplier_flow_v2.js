@@ -53,7 +53,7 @@
       : null;
     const meta = [
       relevanceLabel,
-      `Stock CJ ${item.stock ?? '—'}`,
+      `Stock catalogue ${item.stock ?? '—'}`,
       'US warehouse prioritaire',
       'Chine seulement si rentable',
     ].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join('');
@@ -74,10 +74,16 @@
     const group = groups[0];
     const cards = (group?.products || []).map(resultCard).join('');
     const filtered = Number(group?.filtered_out || 0);
+    const sourceTotal = Number(group?.source_total || 0);
+    const sampled = Number(group?.sampled || 0);
+    const shown = Number(group?.products?.length || 0);
+    const coverage = sourceTotal > 0
+      ? `${sourceTotal.toLocaleString('fr-FR')} correspondance(s) CJ · ${sampled} analysée(s) · ${filtered} hors sujet masqué(s)`
+      : (filtered ? `${filtered} hors sujet masqué(s)` : 'USD · destination US');
     area.innerHTML = `
       <div class="info-box"><strong>CJ Dropshipping · eBay US</strong><p>${esc(data.note || 'US warehouse prioritaire, Chine en fallback rentable.')}</p></div>
       ${errorHtml}
-      ${group ? `<div class="radar-market-head"><strong>${group.products?.length || 0} résultat(s) CJ</strong><span>${filtered ? `${filtered} hors sujet masqué(s)` : 'USD · destination US'}</span></div>` : ''}
+      ${group ? `<div class="radar-market-head"><strong>${shown} résultat(s) affiché(s)</strong><span>${esc(coverage)}</span></div>` : ''}
       <div class="radar-supplier-grid">${cards || '<div class="empty-state compact"><strong>Aucun produit CJ pertinent</strong><span>Essayez une recherche plus précise.</span></div>'}</div>`;
   }
 
@@ -86,7 +92,7 @@
     const area = document.querySelector('#supplierMatchResults');
     if (!q || !area) return;
     area.className = '';
-    area.innerHTML = '<div class="loading">Recherche du produit chez CJ…</div>';
+    area.innerHTML = '<div class="loading">Recherche élargie du catalogue CJ…</div>';
     try {
       const response = await fetch(`/api/supplier-flow/compare?q=${encodeURIComponent(q)}`);
       const data = await response.json().catch(() => ({}));
@@ -102,7 +108,7 @@
     if (!offer) return;
     const previous = button.textContent;
     button.disabled = true;
-    button.textContent = 'Calcul stock + transport US…';
+    button.textContent = 'Inventaire CJ + routes transport…';
     try {
       const response = await fetch('/api/supplier-flow/add', {
         method: 'POST',
