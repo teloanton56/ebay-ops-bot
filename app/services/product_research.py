@@ -1,44 +1,26 @@
 from statistics import median
 
 
-MODEL_MAX_POINTS = 90.0
+MODEL_MAX_POINTS = 100.0
 
 
 def _competition_from_listings(listings: int) -> tuple[str, float]:
+    if listings <= 0:
+        return "Non mesurée", 0
     if listings <= 100:
-        return "Faible", 30
+        return "Faible", 35
     if listings <= 500:
-        return "Modérée", 24
+        return "Modérée", 28
     if listings <= 2000:
-        return "Élevée", 15
+        return "Élevée", 18
     if listings <= 5000:
-        return "Très élevée", 8
+        return "Très élevée", 9
     return "Extrême", 3
 
 
-def _amazon_rank_signal(best_rank: int) -> tuple[str, float]:
-    if best_rank <= 1000:
-        return "Fort", 25
-    if best_rank <= 5000:
-        return "Bon", 21
-    if best_rank <= 20000:
-        return "Moyen", 16
-    if best_rank <= 50000:
-        return "Faible à moyen", 11
-    if best_rank <= 100000:
-        return "Faible", 6
-    return "Très faible", 2
-
-
 def build_product_research_summary(markets: list[dict]) -> dict:
-    """Build an explainable market-research score from measured marketplace data only.
-
-    The score intentionally does not invent search volume or competitor conversion.
-    Missing evidence remains missing and therefore lowers the global score instead of
-    being silently removed from the denominator.
-    """
-    ebay = [row for row in markets if row.get("source") == "EBAY"]
-    amazon = [row for row in markets if row.get("source") == "AMAZON"]
+    """Explain eBay US market structure without inventing search volume or sales."""
+    ebay = [row for row in markets if row.get("source") == "EBAY" and row.get("marketplace") == "EBAY_US"]
     factors: list[dict] = []
     earned_points = 0.0
 
@@ -48,92 +30,69 @@ def build_product_research_summary(markets: list[dict]) -> dict:
         earned_points += earned
         factors.append({"label": label, "earned": round(earned, 1), "maximum": maximum, "detail": detail})
 
-    measured = [row for row in markets if int(row.get("total_results") or 0) > 0]
-    if markets:
-        coverage = len(measured) / len(markets)
-        add_factor(
-            "Présence multi-marchés",
-            20 * coverage,
-            20,
-            f"{len(measured)}/{len(markets)} marché(s) avec des résultats mesurés",
-        )
+    measured = [row for row in ebay if int(row.get("total_results") or 0) > 0]
+    add_factor(
+        "Données eBay US",
+        10 if measured else 0,
+        10,
+        "Marché eBay US mesuré" if measured else "Aucun résultat eBay US exploitable",
+    )
 
     competition = {"label": "Non mesurée", "listings_reference": None}
-    ebay_listing_counts = [int(row.get("total_results") or 0) for row in ebay if int(row.get("total_results") or 0) > 0]
-    if ebay_listing_counts:
-        listing_reference = int(median(ebay_listing_counts))
-        competition_label, competition_points = _competition_from_listings(listing_reference)
-        competition = {"label": competition_label, "listings_reference": listing_reference}
-        add_factor(
-            "Concurrence eBay",
-            competition_points,
-            30,
-            f"Médiane de {listing_reference:,} annonce(s) actives sur les marchés eBay relevés".replace(",", " "),
-        )
+    listing_counts = [int(row.get("total_results") or 0) for row in ebay if int(row.get("total_results") or 0) > 0]
+    if listing_counts:
+        listing_reference = int(median(listing_counts))
+        label, points = _competition_from_listings(listing_reference)
+        competition = {"label": label, "listings_reference": listing_reference}
+        add_factor("Concurrence eBay US", points, 35, f"{listing_reference:,} annonce(s) actives".replace(",", " "))
+    else:
+        add_factor("Concurrence eBay US", 0, 35, "Non mesurée")
 
     seller_shares = [float(row.get("top_seller_share") or 0) for row in ebay if row.get("sellers_sample")]
     if seller_shares:
         concentration = float(median(seller_shares))
         if concentration <= 10:
-            concentration_points = 15
+            concentration_points = 20
         elif concentration <= 20:
-            concentration_points = 12
+            concentration_points = 16
         elif concentration <= 35:
-            concentration_points = 8
+            concentration_points = 10
         else:
             concentration_points = 4
-        add_factor(
-            "Concentration vendeurs",
-            concentration_points,
-            15,
-            f"Le premier vendeur représente environ {concentration:.1f}% de l'échantillon",
-        )
-
-    amazon_ranks = [int(row["best_sales_rank"]) for row in amazon if row.get("best_sales_rank")]
-    if amazon_ranks:
-        best_rank = min(amazon_ranks)
-        demand_label, demand_points = _amazon_rank_signal(best_rank)
-        demand_proxy = {
-            "label": demand_label,
-            "score": round(demand_points / 25 * 100),
-            "evidence": f"Meilleur rang Amazon observé : #{best_rank:,}".replace(",", " "),
-        }
-        add_factor(
-            "Signal de demande Amazon",
-            demand_points,
-            25,
-            f"Meilleur rang observé #{best_rank:,}; le rang reste dépendant de la catégorie".replace(",", " "),
-        )
+        add_factor("Concentration vendeurs", concentration_points, 20,
+                   f"Premier vendeur ≈ {concentration:.1f}% de l'échantillon")
     else:
-        demand_proxy = {
-            "label": "À confirmer",
-            "score": None,
-            "evidence": "Aucun rang de vente Amazon exploitable dans ce relevé",
-        }
+        add_factor("Concentration vendeurs", 0, 20, "Échantillon vendeur insuffisant")
 
-    price_candidates = [
-        row for row in markets
-        if row.get("median_price") is not None and str(row.get("currency") or "").upper() == "EUR"
-    ]
-    if not price_candidates:
-        price_candidates = [row for row in markets if row.get("median_price") is not None]
     reference_price = None
-    if price_candidates:
-        preferred = next(
-            (row for row in price_candidates if row.get("marketplace") in {"EBAY_FR", "AMAZON_FR"}),
-            price_candidates[0],
-        )
+    prices = [row for row in ebay if row.get("median_price") is not None]
+    if prices:
+        preferred = prices[0]
         reference_price = {
             "value": round(float(preferred["median_price"]), 2),
-            "currency": preferred.get("currency") or "EUR",
-            "marketplace": preferred.get("marketplace_name") or preferred.get("marketplace"),
+            "currency": "USD",
+            "marketplace": "eBay United States",
         }
+        median_price = float(preferred["median_price"])
+        min_price = preferred.get("min_price")
+        max_price = preferred.get("max_price")
+        if min_price is not None and max_price is not None and median_price > 0:
+            spread = (float(max_price) - float(min_price)) / median_price * 100
+            if spread <= 60:
+                price_points = 20
+            elif spread <= 120:
+                price_points = 14
+            elif spread <= 200:
+                price_points = 8
+            else:
+                price_points = 4
+            add_factor("Cohérence des prix", price_points, 20, f"Écart min/max ≈ {spread:.0f}% du prix médian")
+        else:
+            add_factor("Cohérence des prix", 8, 20, "Prix médian disponible, dispersion incomplète")
+    else:
+        add_factor("Cohérence des prix", 0, 20, "Prix eBay US indisponible")
 
-    history_changes = [
-        float(row["listing_change_percent"])
-        for row in markets
-        if row.get("listing_change_percent") is not None
-    ]
+    history_changes = [float(row["listing_change_percent"]) for row in ebay if row.get("listing_change_percent") is not None]
     if history_changes:
         average_change = round(sum(history_changes) / len(history_changes), 1)
         if average_change >= 10:
@@ -145,54 +104,45 @@ def build_product_research_summary(markets: list[dict]) -> dict:
         trend = {
             "label": trend_label,
             "change_percent": average_change,
-            "meaning": "Évolution du nombre de résultats, pas évolution des ventes",
+            "meaning": "Évolution du nombre d'annonces, pas des ventes",
         }
+        add_factor("Historique eBay US", 15, 15, f"Comparaison disponible : {average_change:+.1f}% d'annonces")
     else:
         trend = {
             "label": "Premier relevé",
             "change_percent": None,
-            "meaning": "Un prochain relevé permettra de comparer l'évolution de l'offre",
+            "meaning": "Un prochain relevé permettra de comparer l'offre",
         }
+        add_factor("Historique eBay US", 0, 15, "Premier relevé")
 
-    score = round(earned_points / MODEL_MAX_POINTS * 100) if markets else 0
-    has_ebay = bool(ebay_listing_counts)
-    has_amazon_demand = bool(amazon_ranks)
-    has_history = bool(history_changes)
-    if has_ebay and has_amazon_demand and has_history:
-        confidence = "Élevée"
-    elif has_ebay and has_amazon_demand:
-        confidence = "Moyenne"
+    score = round(earned_points / MODEL_MAX_POINTS * 100) if ebay else 0
+    if score >= 70:
+        verdict = "MARCHÉ INTÉRESSANT"
+    elif score >= 50:
+        verdict = "À CREUSER"
+    elif score >= 30:
+        verdict = "PRUDENCE"
     else:
-        confidence = "Faible"
+        verdict = "FAIBLE"
 
-    if has_amazon_demand:
-        if score >= 75:
-            verdict = "À TESTER"
-        elif score >= 55:
-            verdict = "À CREUSER"
-        elif score >= 35:
-            verdict = "PRUDENCE"
-        else:
-            verdict = "FAIBLE"
-    else:
-        if score >= 60:
-            verdict = "À CREUSER"
-        elif score >= 35:
-            verdict = "PRUDENCE"
-        else:
-            verdict = "FAIBLE"
-
+    confidence = "Moyenne" if listing_counts and history_changes else "Faible"
+    demand_proxy = {
+        "label": "Non mesurée",
+        "score": None,
+        "evidence": "Browse API n'expose ni volume de recherche ni ventes exactes des concurrents",
+    }
     missing_signals = []
-    if not has_ebay:
-        missing_signals.append("Concurrence eBay non mesurée")
-    if not has_amazon_demand:
-        missing_signals.append("Demande Amazon non confirmée par un rang de vente")
-    if not has_history:
-        missing_signals.append("Historique insuffisant pour mesurer l'évolution de l'offre")
-    missing_signals.append("Volume exact de recherches eBay non disponible via Browse API")
+    if not listing_counts:
+        missing_signals.append("Concurrence eBay US non mesurée")
+    if not history_changes:
+        missing_signals.append("Historique eBay US encore insuffisant")
+    missing_signals.extend([
+        "Volume exact de recherches eBay non public",
+        "Ventes exactes des annonces concurrentes non exposées par ce flux",
+    ])
 
     return {
-        "method": "MARKET_PROXY_V1",
+        "method": "EBAY_US_MARKET_STRUCTURE_V1",
         "score": score,
         "verdict": verdict,
         "confidence": confidence,
@@ -204,7 +154,7 @@ def build_product_research_summary(markets: list[dict]) -> dict:
         "factors": factors,
         "missing_signals": missing_signals,
         "meaning": (
-            "Score de recherche produit calculé uniquement avec les données réellement observées. "
-            "Il ne prétend pas être un volume de recherche ni un taux de conversion concurrent."
+            "Score de structure du marché eBay US. Il mesure concurrence, concentration, prix et historique ; "
+            "il ne prétend pas mesurer les recherches ou les ventes concurrentes."
         ),
     }
