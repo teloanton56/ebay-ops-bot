@@ -10,6 +10,9 @@ from app.services.supplier_relevance import rank_supplier_results
 
 router = APIRouter(prefix="/api/supplier-flow", tags=["Supplier Flow"])
 
+CJ_SEARCH_PAGE_SIZE = 100
+CJ_VISIBLE_RESULTS = 60
+
 
 class OfferIn(BaseModel):
     provider: str = Field(default="cj", min_length=2, max_length=40)
@@ -35,9 +38,22 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
         client = CJClient()
         if not client.status().get("connected"):
             return None, [{"source": "CJ", "message": "CJ n'est pas connecté"}]
-        result = await client.search_products(keyword=keyword, size=50, min_stock=1, order_by=0)
+        # listV2 accepts up to 100 products per page. Do not pre-filter on global
+        # inventory here: the exact US/CN variant inventory is verified only when
+        # the operator asks to calculate the route.
+        result = await client.search_products(
+            keyword=keyword,
+            size=CJ_SEARCH_PAGE_SIZE,
+            min_stock=0,
+            order_by=0,
+        )
         raw_products = result.get("products") or []
-        relevant, rejected = rank_supplier_results(keyword, raw_products, title_keys=("name",), limit=20)
+        relevant, rejected = rank_supplier_results(
+            keyword,
+            raw_products,
+            title_keys=("name",),
+            limit=CJ_VISIBLE_RESULTS,
+        )
         if not relevant:
             return None, [_no_relevant_message(keyword, len(raw_products))]
         rows = []
@@ -58,12 +74,19 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
                 "match_strength": product.get("match_strength"),
                 "quality_evidence": [
                     f"Pertinence recherche : {float(product.get('match_strength') or 0) * 100:.0f}%",
-                    f"Stock CJ global observé : {product.get('stock', 0)}",
-                    "Le stock exact US/CN et le transport vers les États-Unis sont vérifiés à l'ajout.",
-                    "Une route Chine nécessite aussi une marge eBay US suffisante.",
+                    f"Stock catalogue CJ observé : {product.get('stock', 0)}",
+                    "Le stock exact par variante US/CN est vérifié avec l'API inventaire CJ à l'ajout.",
+                    "Le transport US est calculé sur plusieurs variantes si nécessaire.",
                 ],
             })
-        return {"source": "CJ", "products": rows, "total": len(rows), "filtered_out": rejected}, []
+        return {
+            "source": "CJ",
+            "products": rows,
+            "total": len(rows),
+            "source_total": int(result.get("total") or len(raw_products)),
+            "sampled": len(raw_products),
+            "filtered_out": rejected,
+        }, []
     except Exception as exc:
         return None, [{"source": "CJ", "message": str(exc)}]
 
@@ -79,7 +102,10 @@ async def compare(q: str = Query(min_length=2, max_length=120)):
         "queried": ["CJ"],
         "market": "EBAY_US",
         "currency": "USD",
-        "note": "Sourcing limité à CJ Dropshipping : stock US prioritaire, Chine uniquement si l'économie eBay US le justifie.",
+        "note": (
+            "Recherche CJ élargie à 100 résultats catalogue par requête. "
+            "Le stock US/Chine et le transport vers les États-Unis sont revalidés au clic."
+        ),
     }
 
 
