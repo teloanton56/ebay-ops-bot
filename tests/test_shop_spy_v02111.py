@@ -86,7 +86,8 @@ def test_shop_analysis_uses_current_browse_seller_filter_on_ebay_us(monkeypatch)
     assert data["listings"][0]["shipping_cost"] == 0.0
     assert "sales" not in data["listings"][0]
     assert "Browse" in data["note"]
-    assert "volume de ventes par annonce" in data["note"]
+    assert "nombre de ventes par annonce" in data["note"]
+    assert "aucune vente n'est inventée" in data["note"]
 
 
 def test_shop_spy_source_has_no_decommissioned_finding_dependency():
