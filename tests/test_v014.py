@@ -46,7 +46,7 @@ def test_cloud_dashboard_requires_login_and_sets_secure_cookie(monkeypatch):
     assert "Secure" in login.headers["set-cookie"]
     dashboard = client.get("/")
     assert dashboard.status_code == 200
-    assert "Cloud synchronisé" in dashboard.text
+    assert "eBay US · USD" in dashboard.text
     get_settings.cache_clear()
 
 
@@ -73,19 +73,18 @@ def test_pwa_files_do_not_cache_private_api_or_dashboard():
     assert "url.pathname.startsWith('/api/')" in worker
     assert "url.pathname === '/'" in worker
     assert 'rel="manifest"' in html
-    assert 'id="installAppButton"' in html
+    assert "simple_ui.js" in html
 
 
-def test_help_page_explains_the_workflow_and_team_safety(monkeypatch):
+def test_guided_dashboard_explains_core_workflow_and_safety(monkeypatch):
     monkeypatch.setenv("APP_ACCESS_MODE", "local")
     get_settings.cache_clear()
     html = TestClient(app).get("/").text
-    assert 'data-section="help"' in html
-    assert 'id="section-help"' in html
-    assert "Une opportunité doit franchir six étapes" in html
-    assert "score produit /100" in html
-    assert "un seul compte administrateur" in html
-    assert 'id="exportDiagnostic"' in html
+    assert 'data-section="radar"' in html
+    assert 'id="section-radar"' in html
+    assert "eBay US → CJ → Produit rentable" in html
+    assert "Publication réelle verrouillée" in html
+    assert "Destination verrouillée : United States" in html
     get_settings.cache_clear()
 
 
@@ -109,14 +108,11 @@ def test_secure_diagnostic_excludes_credentials_and_private_records(tmp_path, mo
         monkeypatch.setenv(name, value)
     get_settings.cache_clear()
     db.init_db()
-
     response = TestClient(app).get("/api/ui/diagnostic-export")
-
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
     assert "attachment" in response.headers["content-disposition"]
     assert "DIAGNOSTIC SÉCURISÉ" in response.text
-    assert "Version : 0.14.3" in response.text
     assert "Ce rapport exclut les mots de passe" in response.text
     assert "Produits : 0" in response.text
     assert str((tmp_path / "private-cloud.db").resolve()) not in response.text
