@@ -1,0 +1,15 @@
+.brand-mark{
+  color:transparent!important;
+  text-indent:-9999px;
+  overflow:hidden;
+  background:url('/static/app-icon.svg?v=ops-knot-1') center/cover no-repeat!important;
+  box-shadow:0 10px 26px rgba(49,87,232,.34)!important;
+  isolation:isolate;
+}
+
+.brand-mark::selection{background:transparent}
+
+.login-brand .brand-mark{
+  flex:0 0 auto;
+  box-shadow:0 12px 30px rgba(49,87,232,.28)!important;
+}
