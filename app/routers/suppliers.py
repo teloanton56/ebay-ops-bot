@@ -40,8 +40,6 @@ class FactoryDiscoveryIn(BaseModel):
 
 @router.get("")
 def suppliers():
-    # Existing manual rows are preserved in the database for backwards compatibility,
-    # but the v0.23 operating interface uses CJ only.
     return list_suppliers()
 
 
@@ -114,12 +112,12 @@ async def source_search(
     if not client.status().get("connected"):
         raise HTTPException(400, "CJ n'est pas connecté")
     try:
-        payload = await client.search_products(keyword=keyword, size=50, min_stock=1, order_by=0)
+        payload = await client.search_products(keyword=keyword, size=100, min_stock=0, order_by=0)
         relevant, rejected = rank_supplier_results(
             keyword,
             payload.get("products") or [],
             title_keys=("name",),
-            limit=20,
+            limit=60,
         )
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -145,14 +143,14 @@ async def source_search(
         "provider": provider,
         "keyword": keyword,
         "offers": offers,
+        "source_total": int(payload.get("total") or len(payload.get("products") or [])),
+        "sampled": len(payload.get("products") or []),
         "errors": [],
         "filtered_out": rejected,
         "measured_only": True,
     }
 
 
-# Legacy CRUD is retained so historical rows do not become inaccessible, but the
-# new interface does not expose manual suppliers during the eBay validation phase.
 @router.post("/factory-discovery")
 def factory_discovery(payload: FactoryDiscoveryIn):
     query = payload.query.strip()
