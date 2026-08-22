@@ -5,6 +5,7 @@
     'amazon', 'aliexpress', 'tiktok', 'youtube', 'etsy', 'dropxl', 'vidaxl',
     'printful', 'printify', 'gelato', 'google trends', 'meta'
   ];
+  let supplierFilterObserver = null;
 
   function hide(node) {
     if (!node) return;
@@ -28,34 +29,16 @@
     const section = document.querySelector('#section-connections');
     if (!section) return;
     removeRetiredCards(section);
-
     section.querySelectorAll('.connection-card').forEach(card => {
       const title = String(card.querySelector('h2,h3')?.textContent || card.textContent || '').toLowerCase();
-      const isCJ = card.classList.contains('connection-card-cj') || title.includes('cj dropshipping');
-      const isEbay = title.includes('ebay');
-      if (!isCJ && !isEbay) hide(card);
-    });
-
-    // Keep legacy nodes that app.js still touches, but never show multi-source setup.
-    section.querySelectorAll('.connection-group-head').forEach(head => {
-      const text = String(head.textContent || '').toLowerCase();
-      if (text.includes('signaux') || text.includes('catalogues') || text.includes('production') || text.includes('accès')) {
-        const visibleUntilNextHead = [];
-        let node = head.nextElementSibling;
-        while (node && !node.classList.contains('connection-group-head')) {
-          if (!node.hidden) visibleUntilNextHead.push(node);
-          node = node.nextElementSibling;
-        }
-        if (!visibleUntilNextHead.length) hide(head);
-      }
+      const keep = card.classList.contains('connection-card-cj') || title.includes('cj dropshipping') || title.includes('ebay');
+      if (!keep) hide(card);
     });
   }
 
   function simplifySuppliers() {
     const section = document.querySelector('#section-suppliers');
     if (!section) return;
-
-    // v0.23 has one visible sourcing surface: the CJ comparator/search panel.
     section.querySelector('.supplier-api-tabs')?.remove();
     hide(section.querySelector('#supplierKpis'));
     hide(section.querySelector('.supplier-network'));
@@ -66,12 +49,10 @@
     hide(section.querySelector('.manual-supplier-fallback'));
     hide(section.querySelector('.cj-layout'));
     hide(section.querySelector('#cjSearchForm')?.closest('.search-panel'));
-
     section.querySelectorAll('.supplier-api-panel').forEach(panel => {
       const source = String(panel.querySelector('form')?.dataset.supplierSource || '').toLowerCase();
       if (source !== 'cj') panel.remove();
     });
-
     section.querySelectorAll('.subsection-head').forEach(head => {
       const text = String(head.textContent || '').toLowerCase();
       if (text.includes('sourcing direct') || text.includes('annuaire') || text.includes('usine')) hide(head);
@@ -87,13 +68,62 @@
     hide(section.querySelector('.auto-discovery-panel'));
     hide(section.querySelector('#autoRadarPanel'));
     hide(section.querySelector('.tiered-radar-panel'));
-    section.querySelectorAll('input[name="radar_source"]').forEach(input => {
-      if (input.value !== 'ebay') hide(input.closest('label'));
-    });
   }
 
   function simplifySales() {
     hide(document.querySelector('#section-ebay .sales-channel-panel'));
+  }
+
+  function simplifyProducts() {
+    const section = document.querySelector('#section-catalog');
+    if (!section) return;
+    section.querySelectorAll('button,a').forEach(node => {
+      const text = String(node.textContent || '').toLowerCase();
+      if (text.includes('ajouter un produit') || text.includes('importer csv') || text.includes('charger la démo')) hide(node);
+    });
+    hide(section.querySelector('#csvInput')?.closest('label'));
+
+    const select = section.querySelector('#filterSupplier');
+    if (select) {
+      const keepCJOnly = () => {
+        [...select.options].forEach(option => {
+          const text = String(option.textContent || '').toLowerCase();
+          if (option.value && !text.includes('cj')) option.remove();
+        });
+        if ([...select.options].some(option => option.value)) {
+          select.options[0].textContent = 'CJ Dropshipping';
+        }
+      };
+      keepCJOnly();
+      if (!supplierFilterObserver) {
+        supplierFilterObserver = new MutationObserver(keepCJOnly);
+        supplierFilterObserver.observe(select, { childList: true });
+      }
+    }
+  }
+
+  function simplifySettings() {
+    const marketplace = document.querySelector('#marketplaceId');
+    if (marketplace) {
+      if (![...marketplace.options].some(option => option.value === 'EBAY_US')) {
+        marketplace.add(new Option('EBAY_US', 'EBAY_US'));
+      }
+      marketplace.value = 'EBAY_US';
+      marketplace.disabled = true;
+      marketplace.title = 'Le mode v0.23 est verrouillé sur eBay US';
+    }
+    const currency = document.querySelector('#currency');
+    if (currency) {
+      if (![...currency.options].some(option => option.value === 'USD')) currency.add(new Option('USD', 'USD'));
+      currency.value = 'USD';
+      currency.disabled = true;
+      currency.title = 'Le mode v0.23 utilise uniquement USD';
+    }
+    const riskForm = document.querySelector('#riskSettingsForm');
+    const profit = riskForm?.elements?.min_profit_eur;
+    if (profit?.closest('label')) profit.closest('label').childNodes[0].textContent = 'Profit minimum ($)';
+    const fixed = riskForm?.elements?.fixed_fee;
+    if (fixed?.closest('label')) fixed.closest('label').childNodes[0].textContent = 'Frais eBay par commande ($)';
   }
 
   function removePipelineRemnants() {
@@ -108,6 +138,8 @@
     simplifySuppliers();
     simplifyRadar();
     simplifySales();
+    simplifyProducts();
+    simplifySettings();
     removePipelineRemnants();
   }
 
