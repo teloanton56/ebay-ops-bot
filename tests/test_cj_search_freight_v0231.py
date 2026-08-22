@@ -100,6 +100,34 @@ def test_product_inventory_uses_dedicated_cj_inventory_endpoint(monkeypatch):
     assert snapshot["variant_inventories"]["VID-1"][0]["storage_ids"] == ["US-STORAGE-1"]
 
 
+def test_variant_inventory_fallback_requests_enable_inventory(monkeypatch):
+    client = CJClient()
+
+    async def fake_request(method, path, *, params=None, json_body=None):
+        assert method == "GET"
+        assert path == "/product/variant/queryByVid"
+        assert params == {"vid": "VID-US", "features": "enable_inventory"}
+        return {
+            "data": {
+                "inventories": [{
+                    "countryCode": "US",
+                    "totalInventory": 18,
+                    "cjInventory": 18,
+                    "factoryInventory": 0,
+                    "verifiedWarehouse": 1,
+                    "stock": [{"stockId": "US-STORE-A", "inventory": 18, "factoryInventory": 0}],
+                }]
+            }
+        }
+
+    monkeypatch.setattr(client, "request", fake_request)
+    rows = asyncio.run(client.variant_inventory("VID-US"))
+
+    assert rows[0]["country_code"] == "US"
+    assert rows[0]["stock"] == 18
+    assert rows[0]["storage_ids"] == ["US-STORE-A"]
+
+
 def test_zero_dollar_free_shipping_is_not_discarded(monkeypatch):
     client = CJClient()
 
@@ -121,6 +149,98 @@ def test_zero_dollar_free_shipping_is_not_discarded(monkeypatch):
     assert len(rows) == 1
     assert rows[0]["price_usd"] == 0
     assert rows[0]["delivery_days"] == "4-6"
+
+
+def test_freight_tip_includes_separate_tax_and_clearance_when_total_is_missing(monkeypatch):
+    client = CJClient()
+    captured = {}
+
+    async def fake_request(method, path, *, params=None, json_body=None):
+        assert method == "POST"
+        assert path == "/logistic/freightCalculateTip"
+        captured.update(json_body or {})
+        return {
+            "data": [{
+                "arrivalTime": "5-8",
+                "wrapPostage": 4.0,
+                "taxesFee": 1.0,
+                "clearanceOperationFee": 0.5,
+                "tariff": 0.25,
+                "option": {"enName": "CJPacket"},
+            }]
+        }
+
+    monkeypatch.setattr(client, "request", fake_request)
+    rows = asyncio.run(client.freight_options_tip(
+        {
+            "vid": "VID-TIP",
+            "sku": "SKU-TIP",
+            "price_usd": 6.0,
+            "weight_g": 200,
+            "length_mm": 100,
+            "width_mm": 80,
+            "height_mm": 50,
+        },
+        {"logistics_properties": ["COMMON"], "packing_weight_g": 200},
+        start_country="CN",
+        destination_country="US",
+        storage_ids=["CN-STORAGE-1"],
+    ))
+
+    assert rows[0]["price_usd"] == 5.75
+    assert rows[0]["taxes_usd"] == 1.0
+    assert rows[0]["clearance_usd"] == 0.5
+    assert rows[0]["tariff_usd"] == 0.25
+    req = captured["reqDTOS"][0]
+    assert req["storageIdList"] == ["CN-STORAGE-1"]
+    assert req["totalGoodsAmount"] == 6.0
+
+
+def test_route_uses_variant_inventory_fallback_when_pid_inventory_is_only_product_level():
+    class FakeCJ:
+        def __init__(self):
+            self.variant_checks = []
+
+        async def product_detail(self, pid):
+            return {
+                "pid": pid,
+                "name": "US warehouse item",
+                "image_url": "",
+                "risk_flags": [],
+                "variants": [{
+                    "vid": "VID-US",
+                    "sku": "SKU-US",
+                    "name": "US variant",
+                    "price_usd": 7.0,
+                    "weight_g": 100,
+                    "inventories": [],
+                }],
+            }
+
+        async def product_inventory(self, pid):
+            return {
+                "pid": pid,
+                "product_inventories": [{"country_code": "US", "stock": 18}],
+                "variant_inventories": {},
+            }
+
+        async def variant_inventory(self, vid):
+            self.variant_checks.append(vid)
+            return [{"country_code": "US", "stock": 18, "storage_ids": ["US-STORE-A"]}]
+
+        async def freight_options(self, vid, *, start_country, destination_country, storage_ids=None):
+            assert start_country == "US"
+            assert destination_country == "US"
+            assert storage_ids == ["US-STORE-A"]
+            return [{"name": "USPS", "price_usd": 2.5, "delivery_days": "3-5"}]
+
+    client = FakeCJ()
+    routes = asyncio.run(resolve_cj_landed_routes(client, "PID-US-FALLBACK"))
+
+    assert client.variant_checks == ["VID-US"]
+    assert routes["US"]["variant_id"] == "VID-US"
+    assert routes["US"]["stock"] == 18
+    assert routes["US"]["shipping_cost"] == 2.5
 
 
 def test_route_tries_another_variant_when_cheapest_has_no_freight():
