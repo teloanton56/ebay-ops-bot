@@ -15,19 +15,18 @@ from app.services.cloud_auth import (
     COOKIE_NAME, allowed_hosts, allowed_origins, public_path, session_email,
     validate_cloud_configuration,
 )
-from app.services.db import init_db, list_products
 from app.services.ebay import EbayClient
-from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.23.1"
+VERSION = "0.24.0"
 BRAND_REV = "ops-knot-1"
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     validate_cloud_configuration(get_settings())
+    from app.services.db import init_db
     init_db()
     start_scheduler()
     try:
@@ -103,56 +102,20 @@ def health():
         "operating_mode": "EBAY_US_CJ_ONLY",
         "marketplace": "EBAY_US",
         "currency": "USD",
+        "destination_country": "US",
     }
 
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
-    rows = []
-    for product in list_products():
-        if product.get("marketplace_id") == "EBAY_US" and product.get("currency") == "USD":
-            rows.append({**product, "risk": assess_product(product)})
     context = {
         "request": request,
-        "products": rows,
         "oauth": EbayClient().token_status(),
         "config": get_settings(),
         "version": VERSION,
     }
     html = templates.get_template("dashboard.html").render(context)
-    html = html.replace(
-        "L'environnement reste verrouillé sur Sandbox.",
-        "Le bot est configuré pour eBay US. Utilisez votre keyset Production pour les données live.",
-    )
-    html = html.replace(
-        '<option value="production" disabled>Production (plus tard)</option>',
-        '<option value="production">Production</option>',
-    )
-    html = html.replace(
-        "/static/app-icon.svg",
-        f"/static/app-icon.svg?v={BRAND_REV}",
-    )
-    html = html.replace(
-        "</head>",
-        (
-            f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n'
-            f'<link rel="stylesheet" href="/static/brand.css?v={BRAND_REV}">\n'
-            "</head>"
-        ),
-    )
-    html = html.replace(
-        "</body>",
-        (
-            f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/workflow_cleanup.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/supplier_flow_v2.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/margin_hunter.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/shop_spy.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/catalog_sync.js?v={VERSION}" defer></script>\n'
-            "</body>"
-        ),
-    )
+    html = html.replace("/static/app-icon.svg", f"/static/app-icon.svg?v={BRAND_REV}")
     return HTMLResponse(html)
 
 
