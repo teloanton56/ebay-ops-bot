@@ -1,21 +1,26 @@
-import asyncio
-
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.cj import CJClient, CJError
-from app.services.connections import IntegrationError, YouTubeClient, connection_status
-from app.services.db import (delete_factory_lead, delete_radar_watch, list_factory_leads, list_radar_scans,
-                             delete_rfq, list_radar_watchlist, list_rfqs, list_trend_discoveries,
-                             save_factory_lead, save_radar_watch, save_rfq)
+from app.services.db import (
+    delete_factory_lead,
+    delete_radar_watch,
+    delete_rfq,
+    list_factory_leads,
+    list_radar_scans,
+    list_radar_watchlist,
+    list_rfqs,
+    save_factory_lead,
+    save_radar_watch,
+    save_rfq,
+)
 from app.services.margin_hunter import hunt_margin_opportunities
-from app.services.marketplace_supplier_sources import aliexpress_supplier_offers, amazon_supplier_offers
 from app.services.product_research import build_product_research_summary
-from app.services.radar import (AMAZON_MARKETPLACES, MARKETPLACES, analyze_amazon_market,
-                                analyze_ebay_market, build_rfq_message, source_statuses)
+from app.services.radar import analyze_ebay_market, build_rfq_message, source_statuses
+from app.services.supplier_relevance import rank_supplier_results
 
 
-router = APIRouter(prefix="/api/radar", tags=["Radar 360"])
+router = APIRouter(prefix="/api/radar", tags=["Radar eBay US"])
 
 
 class WatchIn(BaseModel):
@@ -25,6 +30,7 @@ class WatchIn(BaseModel):
 
 class ScanIn(BaseModel):
     keyword: str = Field(min_length=2, max_length=120)
+    # Kept for backward-compatible clients; v0.23 always uses EBAY_US only.
     marketplaces: list[str] = Field(default_factory=list, max_length=6)
     amazon_marketplaces: list[str] = Field(default_factory=list, max_length=6)
 
@@ -47,7 +53,7 @@ class RFQIn(BaseModel):
 
 
 class DiscoveryIn(BaseModel):
-    country: str = Field(default="FR", min_length=2, max_length=2)
+    country: str = Field(default="US", min_length=2, max_length=2)
 
 
 class MarginHunterIn(BaseModel):
@@ -57,7 +63,7 @@ class MarginHunterIn(BaseModel):
 
 @router.get("/sources")
 def radar_sources():
-    return source_statuses()
+    return [row for row in source_statuses() if row.get("id") in {"ebay", "cj"}]
 
 
 @router.get("/watchlist")
@@ -80,24 +86,20 @@ def remove_radar_watch(watch_id: int):
 
 @router.get("/history")
 def radar_history():
-    return list_radar_scans()
+    return [row for row in list_radar_scans() if row.get("marketplace") == "EBAY_US"]
 
 
 @router.get("/discoveries")
 def discoveries():
-    return [row for row in list_trend_discoveries(50)
-            if row.get("source") == "YOUTUBE_SHORTS_COMMERCE"][:12]
+    return []
 
 
 @router.post("/discover")
-async def discover_without_keyword(payload: DiscoveryIn):
-    status = connection_status("youtube")
-    if not status["connected"]:
-        raise HTTPException(400, "Connectez et testez YouTube pour lancer la détection automatique sans mot-clé.")
-    try:
-        return await YouTubeClient().discover(payload.country.upper())
-    except IntegrationError as exc:
-        raise HTTPException(400, str(exc)) from exc
+async def discover_without_keyword(_: DiscoveryIn):
+    raise HTTPException(
+        410,
+        "La détection YouTube/TikTok a été retirée en v0.23. Utilisez une niche eBay US ou Margin Hunter.",
+    )
 
 
 @router.post("/margin-hunter")
@@ -110,129 +112,66 @@ async def margin_hunter(payload: MarginHunterIn):
 
 @router.post("/scan")
 async def run_radar_scan(payload: ScanIn):
-    if not payload.marketplaces and not payload.amazon_marketplaces:
-        raise HTTPException(400, "Sélectionnez au moins un marché eBay ou Amazon")
-    invalid = [market for market in payload.marketplaces if market not in MARKETPLACES]
-    invalid.extend(market for market in payload.amazon_marketplaces if market not in AMAZON_MARKETPLACES)
-    if invalid:
-        raise HTTPException(400, "Marketplace non prise en charge : " + ", ".join(invalid))
-    statuses = {row["id"]: row for row in source_statuses()}
-    calls, selected, errors = [], [], []
-    if payload.marketplaces:
-        if statuses["ebay"]["ready"]:
-            for market in payload.marketplaces:
-                calls.append(analyze_ebay_market(payload.keyword, market))
-                selected.append(market)
-        else:
-            errors.append({"marketplace": "eBay", "message": "Les clés eBay Production sont nécessaires. Aucun résultat Sandbox n'est utilisé."})
-    if payload.amazon_marketplaces:
-        if statuses["amazon"]["ready"]:
-            for market in payload.amazon_marketplaces:
-                calls.append(analyze_amazon_market(payload.keyword, market))
-                selected.append(market)
-        else:
-            errors.append({"marketplace": "Amazon", "message": "Connectez et testez Amazon SP-API dans Connexions."})
-    if not calls:
-        raise HTTPException(400, errors[0]["message"])
-    results = await asyncio.gather(*calls, return_exceptions=True)
-    markets = []
-    for market, result in zip(selected, results):
-        if isinstance(result, Exception):
-            errors.append({"marketplace": market, "message": str(result)})
-        else:
-            markets.append(result)
-    if not markets and errors:
-        raise HTTPException(400, errors[0]["message"])
-    research_summary = build_product_research_summary(markets)
+    keyword = payload.keyword.strip()
+    try:
+        market = await analyze_ebay_market(keyword, "EBAY_US")
+    except Exception as exc:
+        raise HTTPException(400, f"Analyse eBay US impossible : {exc}") from exc
+    research_summary = build_product_research_summary([market])
     return {
-        "keyword": payload.keyword,
-        "markets": markets,
-        "errors": errors,
+        "keyword": keyword,
+        "marketplace": "EBAY_US",
+        "markets": [market],
+        "errors": [],
         "research_summary": research_summary,
         "measured_only": True,
         "note": (
-            "Le score Product Research utilise uniquement des signaux observés. "
-            "Le volume exact de recherches eBay et la conversion des concurrents ne sont pas exposés par Browse API."
+            "Radar v0.23 mesure uniquement eBay US. Le score repose sur des annonces actives observées ; "
+            "eBay ne fournit pas le volume exact de recherches concurrentes via Browse API."
         ),
-    }
-
-
-def _marketplace_group(source: str, offers: list[dict]) -> dict:
-    products = []
-    for offer in offers:
-        products.append({
-            "provider": source,
-            "supplier_sku": offer.get("supplier_sku"),
-            "name": offer.get("name"),
-            "price": offer.get("product_cost"),
-            "currency": offer.get("currency") or "EUR",
-            "stock": offer.get("stock"),
-            "image_url": offer.get("image_url") or "",
-            "source_url": offer.get("source_url") or "",
-            "shipping_days": offer.get("shipping_days"),
-            "warehouse": offer.get("warehouse") or "",
-            "quality_verified": False,
-            "quality_evidence": offer.get("evidence") or [],
-        })
-    return {
-        "source": source,
-        "products": products,
-        "total": len(products),
-        "note": "Données fournisseur normalisées. Stock, livraison et conformité ne sont validés que lorsqu'ils sont réellement fournis.",
     }
 
 
 @router.get("/supplier-match")
 async def supplier_match(q: str = Query(min_length=2, max_length=120)):
     keyword = q.strip()
-    if len(keyword) < 2:
-        raise HTTPException(400, "Mot-clé trop court")
-
-    groups: list[dict] = []
-    errors: list[dict] = []
-
+    client = CJClient()
+    if not client.status().get("connected"):
+        raise HTTPException(400, "Connectez CJ avant de rechercher un fournisseur")
     try:
-        cj_status = CJClient().status()
-        if cj_status.get("connected"):
-            result = await CJClient().search_products(keyword=keyword, size=12, min_stock=3)
-            for product in result["products"]:
-                product["provider"] = "CJ"
-                product["quality_evidence"] = [x for x in [
-                    "CE déclaré" if product.get("has_ce") else None,
-                    f"Stock observé : {product.get('stock', 0)}",
-                    f"Présence CJ : {product.get('listed_num', 0)} listings",
-                ] if x]
-                product["quality_verified"] = False
-            groups.append({
-                "source": "CJ",
-                "products": result["products"],
-                "total": result["total"],
-                "note": "Prix produit CJ avant transport ; analyse France disponible après sélection.",
-            })
+        result = await client.search_products(keyword=keyword, size=40, min_stock=1)
+        relevant, rejected = rank_supplier_results(
+            keyword,
+            result.get("products") or [],
+            title_keys=("name",),
+            limit=12,
+        )
     except (CJError, RuntimeError) as exc:
-        errors.append({"source": "CJ", "message": str(exc)})
+        raise HTTPException(400, str(exc)) from exc
 
-    amazon_offers, amazon_errors = await amazon_supplier_offers(keyword)
-    errors.extend(amazon_errors)
-    if amazon_offers:
-        groups.append(_marketplace_group("Amazon", amazon_offers))
-
-    aliexpress_offers, aliexpress_errors = await aliexpress_supplier_offers(keyword)
-    errors.extend(aliexpress_errors)
-    if aliexpress_offers:
-        groups.append(_marketplace_group("AliExpress", aliexpress_offers))
-
-    if not groups:
-        message = errors[0]["message"] if errors else "Connectez CJ, Amazon ou AliExpress avant de comparer les offres"
-        raise HTTPException(400, message)
+    products = []
+    for product in relevant:
+        products.append({
+            **product,
+            "provider": "CJ",
+            "warehouse": "US prioritaire · CN fallback",
+            "currency": "USD",
+            "quality_verified": False,
+            "quality_evidence": [
+                f"Pertinence : {float(product.get('match_strength') or 0) * 100:.0f}%",
+                "Coût livré US calculé à l'ajout ou dans Margin Hunter.",
+            ],
+        })
     return {
-        "groups": groups,
-        "errors": errors,
+        "groups": [{"source": "CJ", "products": products, "total": len(products)}] if products else [],
+        "errors": ([{"source": "CJ", "message": f"{rejected} résultat(s) hors sujet masqué(s)"}] if rejected else []),
         "measured_only": True,
-        "note": "Comparaison limitée aux trois fournisseurs actifs du bot : CJ, Amazon et AliExpress.",
+        "note": "Comparaison fournisseur limitée à CJ Dropshipping.",
     }
 
 
+# Legacy factory/RFQ endpoints remain read/write compatible for existing data but
+# are no longer exposed in the v0.23 interface. They can support the later Shopify phase.
 @router.get("/factories")
 def factories():
     return list_factory_leads()
@@ -261,11 +200,14 @@ def create_rfq(payload: RFQIn):
     factory = next((x for x in list_factory_leads() if x["id"] == payload.factory_id), None)
     if payload.factory_id and not factory:
         raise HTTPException(404, "Usine introuvable")
-    message = build_rfq_message(factory["company"] if factory else "", payload.product_query,
-                                payload.quantities, payload.specifications)
+    message = build_rfq_message(
+        factory["company"] if factory else "",
+        payload.product_query,
+        payload.quantities,
+        payload.specifications,
+    )
     rfq_id = save_rfq({**payload.model_dump(), "message": message})
-    return {"id": rfq_id, "message": message, "status": "BROUILLON",
-            "sent": False, "notice": "Aucun message n'a été envoyé."}
+    return {"id": rfq_id, "message": message, "status": "BROUILLON", "sent": False}
 
 
 @router.delete("/rfqs/{rfq_id}")

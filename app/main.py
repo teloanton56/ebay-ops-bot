@@ -6,18 +6,22 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.routers import (auth, auto_radar, automation, channels, cj, cloud, compliance, connections, ebay,
-                         ebay_compliance, finance, opportunity_center, products, radar, research,
-                         settings, shop_spy, supplier_flow, suppliers, support, taxonomy, ui)
-from app.services.cloud_auth import COOKIE_NAME, allowed_hosts, allowed_origins, public_path, session_email, validate_cloud_configuration
+from app.routers import (
+    auth, automation, channels, cj, cloud, compliance, connections, ebay,
+    ebay_compliance, finance, opportunity_center, products, radar, research,
+    settings, shop_spy, supplier_flow, suppliers, support, taxonomy, ui,
+)
+from app.services.cloud_auth import (
+    COOKIE_NAME, allowed_hosts, allowed_origins, public_path, session_email,
+    validate_cloud_configuration,
+)
 from app.services.db import init_db, list_products
 from app.services.ebay import EbayClient
 from app.services.risk import assess_product
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.22.0"
-# Compatibility baseline retained: v0.14.3 introduced the simplified real-data dashboard.
+VERSION = "0.23.0"
 
 
 @asynccontextmanager
@@ -30,7 +34,8 @@ async def lifespan(_: FastAPI):
     finally:
         stop_scheduler()
 
-app = FastAPI(title="eBay Ops Bot", version=VERSION, docs_url=None, redoc_url=None, lifespan=lifespan)
+
+app = FastAPI(title="eBay US · CJ Ops Bot", version=VERSION, docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts(get_settings()))
 app.include_router(ebay_compliance.router)
 app.include_router(cloud.router)
@@ -46,7 +51,6 @@ app.include_router(cj.router)
 app.include_router(connections.router)
 app.include_router(finance.router)
 app.include_router(radar.router)
-app.include_router(auto_radar.router)
 app.include_router(opportunity_center.router)
 app.include_router(suppliers.router)
 app.include_router(supplier_flow.router)
@@ -89,15 +93,24 @@ async def local_security(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "version": VERSION, "demo_mode": get_settings().demo_mode,
-            "mode": "cloud" if get_settings().cloud_mode else "local"}
+    settings = get_settings()
+    return {
+        "ok": True,
+        "version": VERSION,
+        "demo_mode": settings.demo_mode,
+        "mode": "cloud" if settings.cloud_mode else "local",
+        "operating_mode": "EBAY_US_CJ_ONLY",
+        "marketplace": "EBAY_US",
+        "currency": "USD",
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     rows = []
-    for p in list_products():
-        rows.append({**p, "risk": assess_product(p)})
+    for product in list_products():
+        if product.get("marketplace_id") == "EBAY_US" and product.get("currency") == "USD":
+            rows.append({**product, "risk": assess_product(product)})
     context = {
         "request": request,
         "products": rows,
@@ -108,7 +121,7 @@ def dashboard(request: Request):
     html = templates.get_template("dashboard.html").render(context)
     html = html.replace(
         "L'environnement reste verrouillé sur Sandbox.",
-        "Utilisez le keyset correspondant à l'environnement choisi. Production est disponible avec vos clés live.",
+        "Le bot est configuré pour eBay US. Utilisez votre keyset Production pour les données live.",
     )
     html = html.replace(
         '<option value="production" disabled>Production (plus tard)</option>',
@@ -116,22 +129,14 @@ def dashboard(request: Request):
     )
     html = html.replace(
         "</head>",
-        (
-            f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n'
-            f'<link rel="stylesheet" href="/static/auto_radar.css?v={VERSION}">\n'
-            f'<link rel="stylesheet" href="/static/tiered_radar.css?v={VERSION}">\n'
-            "</head>"
-        ),
+        f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n</head>',
     )
     html = html.replace(
         "</body>",
         (
-            "<!-- Compatibility baseline v0.14.3: simplified real-data dashboard -->\n"
             f'<script src="/static/provider_cleanup.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/workflow_cleanup.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/product_research.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/auto_radar.js?v={VERSION}" defer></script>\n'
-            f'<script src="/static/tiered_radar.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/supplier_flow_v2.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/margin_hunter.js?v={VERSION}" defer></script>\n'
             f'<script src="/static/shop_spy.js?v={VERSION}" defer></script>\n'
@@ -149,8 +154,11 @@ def manifest():
 
 @app.get("/service-worker.js")
 def service_worker():
-    return FileResponse("app/static/service-worker.js", media_type="application/javascript",
-                        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
+    return FileResponse(
+        "app/static/service-worker.js",
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/offline", response_class=HTMLResponse)

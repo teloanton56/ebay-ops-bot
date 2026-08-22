@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from statistics import median
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from app.config import get_settings
-from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier_offers
-from app.services.cj import CJClient
 from app.services.ebay import EbayClient, EbayError
-from app.services.margin_hunter import _ali_candidates, _deep_cj_candidate
-from app.services.supplier_relevance import rank_supplier_results
 
 
 SELLER_RE = re.compile(r"^[A-Za-z0-9_.-]{2,80}$")
 MAX_SHOP_ITEMS = 100
-MAX_SUPPLIER_RESULTS = 8
 BROWSE_ROOT_CATEGORY = "0"
 
 
@@ -78,9 +72,9 @@ def _shipping_cost(item: dict[str, Any]) -> tuple[float | None, str]:
         price = _float(block.get("value"))
         if price is None:
             continue
-        costs.append((price, str(block.get("currency") or "EUR")))
+        costs.append((price, str(block.get("currency") or "USD")))
     if not costs:
-        return None, "EUR"
+        return None, "USD"
     return min(costs, key=lambda entry: entry[0])
 
 
@@ -93,14 +87,14 @@ def _normalize_browse_listing(item: dict[str, Any], rank: int) -> dict[str, Any]
         return None
 
     shipping, shipping_currency = _shipping_cost(item)
-    currency = str(price_block.get("currency") or shipping_currency or "EUR")
+    currency = str(price_block.get("currency") or shipping_currency or "USD")
     seller = item.get("seller") or {}
+    image = item.get("image") or {}
+    location = item.get("itemLocation") or {}
     if not isinstance(seller, dict):
         seller = {}
-    image = item.get("image") or {}
     if not isinstance(image, dict):
         image = {}
-    location = item.get("itemLocation") or {}
     if not isinstance(location, dict):
         location = {}
 
@@ -117,7 +111,7 @@ def _normalize_browse_listing(item: dict[str, Any], rank: int) -> dict[str, Any]
         "rank": rank,
         "item_id": item_id,
         "legacy_item_id": legacy_id,
-        "title": str(item.get("title") or "Produit eBay"),
+        "title": str(item.get("title") or "eBay product"),
         "price": round(price, 2),
         "shipping_cost": round(shipping, 2) if shipping is not None else None,
         "buyer_total": total_price,
@@ -150,31 +144,28 @@ async def _browse_seller_items(seller: str, limit: int) -> dict[str, Any]:
             "GET",
             "/buy/browse/v1/item_summary/search",
             params=params,
-            marketplace_id="EBAY_FR",
+            marketplace_id="EBAY_US",
         )
     except EbayError as exc:
         detail = exc.payload if isinstance(exc.payload, dict) else {}
         errors = detail.get("errors") or []
         message = errors[0].get("message") if errors and isinstance(errors[0], dict) else None
-        raise ValueError(message or f"Impossible de lire la boutique eBay « {seller} » avec Browse API") from exc
+        raise ValueError(message or f"Impossible de lire la boutique eBay US « {seller} »") from exc
 
 
 async def analyze_ebay_shop(value: str, *, limit: int = 50) -> dict[str, Any]:
     settings = get_settings()
     if settings.ebay_effective_env != "production" or not settings.ebay_client_id or not settings.ebay_client_secret:
-        raise ValueError("Spy eBay Shop nécessite les clés eBay Production pour lire les annonces réelles.")
+        raise ValueError("Spy eBay Shop nécessite les clés eBay Production pour lire eBay US.")
 
     seller = extract_seller_username(value)
-    limit = min(max(int(limit), 1), MAX_SHOP_ITEMS)
-    payload = await _browse_seller_items(seller, limit)
-
+    payload = await _browse_seller_items(seller, min(max(int(limit), 1), MAX_SHOP_ITEMS))
     listings = []
     for index, item in enumerate(payload.get("itemSummaries") or [], start=1):
-        if not isinstance(item, dict):
-            continue
-        row = _normalize_browse_listing(item, index)
-        if row:
-            listings.append(row)
+        if isinstance(item, dict):
+            row = _normalize_browse_listing(item, index)
+            if row and str(row.get("currency") or "USD").upper() == "USD":
+                listings.append(row)
 
     first_seller = next((row for row in listings if row.get("seller_username")), None)
     resolved_seller = str((first_seller or {}).get("seller_username") or seller)
@@ -190,93 +181,19 @@ async def analyze_ebay_shop(value: str, *, limit: int = 50) -> dict[str, Any]:
             "feedback_percent": (first_seller or {}).get("seller_feedback_percent"),
             "account_type": (first_seller or {}).get("seller_account_type"),
         },
+        "marketplace": "EBAY_US",
         "active_listings_total": int(payload.get("total") or len(listings)),
         "sample_size": len(listings),
         "median_price": round(median(prices), 2) if prices else None,
         "min_price": round(min(prices), 2) if prices else None,
         "max_price": round(max(prices), 2) if prices else None,
         "sample_inventory_value": round(sum(buyer_totals), 2) if buyer_totals else 0.0,
-        "currency": listings[0].get("currency") if listings else "EUR",
+        "currency": "USD",
         "watchers_available": watchers_available,
-        "ranking_basis": "EBAY_BROWSE_SELLER_ROOT_CATEGORY",
+        "ranking_basis": "EBAY_US_BROWSE_SELLER_ROOT_CATEGORY",
         "listings": listings,
         "note": (
-            "Les annonces actives sont récupérées avec l'API eBay Browse actuelle, filtrée sur le vendeur et la catégorie racine. "
-            "Le volume de ventes par annonce n'est pas exposé par ce flux. Les watchers ne sont affichés que si eBay les fournit à l'application. "
-            "La valeur d'inventaire affichée correspond uniquement à l'échantillon d'annonces actives, pas au chiffre d'affaires."
-        ),
-    }
-
-
-async def compare_shop_listing(title: str, competitor_price: float, *, limit: int = MAX_SUPPLIER_RESULTS) -> dict[str, Any]:
-    title = str(title or "").strip()
-    if len(title) < 2:
-        raise ValueError("Titre eBay trop court")
-    try:
-        reference_price = float(competitor_price)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Prix concurrent invalide") from exc
-    if reference_price <= 0:
-        raise ValueError("Prix concurrent invalide")
-    limit = min(max(int(limit), 1), MAX_SUPPLIER_RESULTS)
-
-    market = {"competition_points": 0.0, "demand_points": 0.0}
-    candidates: list[dict[str, Any]] = []
-    errors: list[dict[str, str]] = []
-
-    cj_client = CJClient()
-    if cj_client.status().get("connected"):
-        try:
-            search = await cj_client.search_products(keyword=title, size=40, min_stock=3, order_by=0)
-            relevant, _ = rank_supplier_results(title, search.get("products") or [], title_keys=("name",), limit=4)
-            exchange = await cj_client.usd_to_eur()
-            semaphore = asyncio.Semaphore(2)
-            jobs = [
-                _deep_cj_candidate(
-                    cj_client,
-                    product,
-                    exchange_rate=float(exchange["rate"]),
-                    reference_price=reference_price,
-                    market=market,
-                    semaphore=semaphore,
-                )
-                for product in relevant[:4]
-            ]
-            results = await asyncio.gather(*jobs) if jobs else []
-            for candidate, error in results:
-                if candidate:
-                    candidate["reference_source"] = "PRIX_BOUTIQUE_EBAY"
-                    candidates.append(candidate)
-                elif error:
-                    errors.append({"source": "CJ", "message": error})
-        except Exception as exc:
-            errors.append({"source": "CJ", "message": str(exc)})
-    else:
-        errors.append({"source": "CJ", "message": "CJ n'est pas connecté"})
-
-    ali_offers, ali_errors = await aliexpress_dropship_supplier_offers(title)
-    for row in ali_errors:
-        errors.append({"source": "AliExpress", "message": str(row.get("message") or row)})
-    for candidate in _ali_candidates(ali_offers, reference_price=reference_price, market=market):
-        candidate["reference_source"] = "PRIX_BOUTIQUE_EBAY"
-        candidates.append(candidate)
-
-    candidates.sort(
-        key=lambda row: (
-            0 if row.get("verified") else 1,
-            0 if row.get("goal_hit") else 1,
-            -float(row.get("score") or 0),
-        )
-    )
-    return {
-        "title": title,
-        "competitor_price": round(reference_price, 2),
-        "currency": "EUR",
-        "candidates": candidates[:limit],
-        "errors": errors,
-        "note": (
-            "CJ utilise un coût livré France calculé avant estimation de marge. "
-            "AliExpress reste préliminaire tant que son coût de livraison n'est pas confirmé. "
-            "La référence de prix est l'annonce du concurrent analysée, pas une estimation de ventes."
+            "Analyse limitée à eBay US. Les annonces actives sont lues via Browse API. "
+            "Le nombre de ventes par annonce n'est pas exposé par ce flux ; aucune vente n'est inventée."
         ),
     }

@@ -1,27 +1,21 @@
 import asyncio
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
+
 from app.routers.supplier_flow import OfferIn, add_offer
-from app.services.db import delete_product, init_db, list_products
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _cleanup_test_product() -> None:
-    for product in list_products():
-        if product.get("supplier_sku") == "ALI-SYNC-V02110":
-            delete_product(int(product["id"]))
-
-
-def test_supplier_flow_add_is_persisted_in_products_catalog():
-    init_db()
-    _cleanup_test_product()
-    try:
-        result = asyncio.run(add_offer(OfferIn(
+def test_retired_marketplace_supplier_cannot_enter_active_catalog():
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(add_offer(OfferIn(
             provider="AliExpress",
             supplier_sku="SYNC-V02110",
-            name="Catalog sync regression product",
+            name="Retired marketplace regression product",
             price=4.5,
             shipping_cost=None,
             currency="EUR",
@@ -30,13 +24,8 @@ def test_supplier_flow_add_is_persisted_in_products_catalog():
             image_url="",
             source_url="",
         )))
-        products = list_products()
-        saved = next((row for row in products if row.get("id") == result.get("product_id")), None)
-        assert saved is not None
-        assert saved["supplier_sku"] == "ALI-SYNC-V02110"
-        assert saved["title"] == "Catalog sync regression product"
-    finally:
-        _cleanup_test_product()
+    assert exc.value.status_code == 410
+    assert "uniquement CJ" in str(exc.value.detail)
 
 
 def test_catalog_sync_tracks_every_supplier_flow_add_and_refreshes_on_products_navigation():
@@ -48,10 +37,9 @@ def test_catalog_sync_tracks_every_supplier_flow_add_and_refreshes_on_products_n
     assert "refreshVisibleCounts" in source
 
 
-def test_v02110_loads_catalog_sync_and_updates_pwa_cache():
+def test_catalog_sync_is_loaded_and_pwa_cache_matches_current_version():
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     worker = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
-    assert 'VERSION = "' in main
     version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
     assert 'catalog_sync.js?v={VERSION}' in main
     assert f"opsbot-v{version}-shell" in worker

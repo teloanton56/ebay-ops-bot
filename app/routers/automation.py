@@ -1,11 +1,19 @@
 from fastapi import APIRouter
-from app.services.db import list_products, get_listing_for_product, list_analysis_runs, list_alerts, mark_alerts_read
+
+from app.config import get_settings
 from app.services.analyzer import analyze_catalog
+from app.services.db import (
+    get_listing_for_product,
+    list_alerts,
+    list_analysis_runs,
+    list_products,
+    mark_alerts_read,
+)
 from app.services.ebay import EbayClient, EbayError
 from app.services.risk import assess_product
-from app.config import get_settings
+from app.services.supplier_refresh import SupplierRefreshError, refresh_product_from_supplier
 
-router = APIRouter(prefix="/api/automation", tags=["Automation"])
+router = APIRouter(prefix="/api/automation", tags=["Automation eBay US"])
 
 
 @router.post("/analyze-now")
@@ -30,32 +38,69 @@ def read_alerts():
 
 @router.get("/status")
 def automation_status():
-    s = get_settings()
-    real_market = bool(s.ebay_env == "production" and s.ebay_client_id and s.ebay_client_secret
-                       and EbayClient().token_status().get("connected"))
-    return {"enabled": s.auto_analysis_enabled, "interval_minutes": s.auto_analysis_minutes,
-            "mode": "EBAY" if real_market else "CATALOGUE",
-            "market_data": real_market,
-            "write_enabled": s.ebay_write_enabled, "publish_enabled": s.ebay_publish_enabled}
+    settings = get_settings()
+    real_market = bool(
+        settings.ebay_effective_env == "production"
+        and settings.ebay_client_id
+        and settings.ebay_client_secret
+        and EbayClient().token_status().get("connected")
+    )
+    return {
+        "enabled": settings.auto_analysis_enabled,
+        "interval_minutes": settings.auto_analysis_minutes,
+        "mode": "EBAY_US" if real_market else "CATALOGUE_US",
+        "market_data": real_market,
+        "marketplace": "EBAY_US",
+        "currency": "USD",
+        "supplier": "CJ",
+        "write_enabled": settings.ebay_write_enabled,
+        "publish_enabled": settings.ebay_publish_enabled,
+    }
 
 
 @router.post("/sync-all")
 async def sync_all():
     client = EbayClient()
-    s = get_settings()
+    settings = get_settings()
     results = []
-    for p in list_products():
-        listing = get_listing_for_product(p["id"])
+    for product in list_products():
+        if product.get("marketplace_id") != "EBAY_US" or product.get("currency") != "USD":
+            continue
+        listing = get_listing_for_product(product["id"])
         if not listing or not listing.get("offer_id"):
             continue
-        risk = assess_product(p)
-        qty = int(p.get("stock") or 0) if risk["pass"] else 0
         try:
+            refreshed, supplier_verification = await refresh_product_from_supplier(product)
+            risk = assess_product(refreshed)
+            qty = int(refreshed.get("stock") or 0) if risk["pass"] else 0
             result = await client.update_live_offer_price_quantity(
-                p["supplier_sku"], listing["offer_id"], float(p.get("target_price") or 0), qty,
-                p.get("currency") or s.ebay_currency,
+                refreshed["supplier_sku"],
+                listing["offer_id"],
+                float(refreshed.get("target_price") or 0),
+                qty,
+                "USD",
             )
-            results.append({"product_id": p["id"], "ok": True, "risk": risk, "result": result})
+            results.append({
+                "product_id": refreshed["id"],
+                "ok": True,
+                "risk": risk,
+                "supplier_verification": supplier_verification,
+                "effective_quantity": qty,
+                "result": result,
+            })
+        except SupplierRefreshError as exc:
+            # Never push stale positive stock when CJ cannot be revalidated.
+            try:
+                await client.update_live_offer_price_quantity(
+                    product["supplier_sku"],
+                    listing["offer_id"],
+                    float(product.get("target_price") or 0),
+                    0,
+                    "USD",
+                )
+            except Exception:
+                pass
+            results.append({"product_id": product["id"], "ok": False, "safe_quantity": 0, "error": str(exc)})
         except EbayError as exc:
-            results.append({"product_id": p["id"], "ok": False, "error": str(exc)})
-    return {"processed": len(results), "results": results}
+            results.append({"product_id": product["id"], "ok": False, "error": str(exc)})
+    return {"processed": len(results), "marketplace": "EBAY_US", "currency": "USD", "results": results}

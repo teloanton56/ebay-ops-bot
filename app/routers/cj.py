@@ -1,5 +1,3 @@
-import re
-
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -7,9 +5,20 @@ from pydantic import BaseModel, Field
 from app.config import get_settings
 from app.routers.settings import _read_env, _write_env
 from app.services.cj import CJClient, CJError
-from app.services.db import (delete_cj_candidate, get_cj_candidate, list_cj_candidates,
-                             ensure_provider_supplier, save_cj_candidate, save_cj_candidate_analysis,
-                             upsert_product)
+from app.services.cj_landed import (
+    resolve_cj_landed_offer,
+    route_requirements,
+    save_cj_product_link,
+)
+from app.services.db import (
+    delete_cj_candidate,
+    ensure_provider_supplier,
+    get_cj_candidate,
+    list_cj_candidates,
+    save_cj_candidate,
+    save_cj_candidate_analysis,
+    upsert_product,
+)
 from app.services.profit import suggest_price
 from app.services.supplier_relevance import rank_supplier_results
 
@@ -33,8 +42,8 @@ class CJCandidateIn(BaseModel):
 
 
 class CJAnalyzeIn(BaseModel):
-    vid: str
-    destination_country: str = Field(default="FR", min_length=2, max_length=2)
+    vid: str = ""
+    destination_country: str = Field(default="US", min_length=2, max_length=2)
     postcode: str = Field(default="", max_length=12)
 
 
@@ -47,7 +56,7 @@ def _ensure_encryption_key() -> None:
 
 @router.get("/settings")
 def cj_settings():
-    return CJClient().status()
+    return {**CJClient().status(), "operating_mode": "US_FIRST_CN_FALLBACK", "currency": "USD"}
 
 
 @router.post("/settings")
@@ -59,7 +68,7 @@ async def save_cj_settings(payload: CJKeyIn):
         result = await client.test_connection()
     except CJError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {**result, "message": "CJ est connecté en lecture seule."}
+    return {**result, "message": "CJ connecté. Mode actif : entrepôt US prioritaire, Chine en fallback rentable."}
 
 
 @router.post("/test")
@@ -73,7 +82,8 @@ async def test_cj():
 @router.get("/warehouses")
 async def cj_warehouses():
     try:
-        return await CJClient().warehouses()
+        rows = await CJClient().warehouses()
+        return [row for row in rows if str(row.get("country_code") or "").upper() in {"US", "CN"}]
     except CJError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -87,31 +97,38 @@ async def cj_categories():
 
 
 @router.get("/products")
-async def cj_products(q: str = "", page: int = 1, size: int = 20, category_id: str = "",
-                      country_code: str = "", min_price: float | None = None, max_price: float | None = None,
-                      min_stock: int = 1, order_by: int = 0):
+async def cj_products(
+    q: str = "",
+    page: int = 1,
+    size: int = 20,
+    category_id: str = "",
+    country_code: str = "",
+    min_price: float | None = None,
+    max_price: float | None = None,
+    min_stock: int = 1,
+    order_by: int = 0,
+):
+    # Search globally so products with either US or CN stock can be discovered;
+    # exact route stock is verified by cj_landed before margin decisions.
+    if country_code and country_code.upper() not in {"US", "CN"}:
+        raise HTTPException(400, "v0.23 autorise uniquement les entrepôts CJ US et CN")
     try:
         requested_size = min(max(size, 1), 50)
         clean_query = q.strip()
-        search_size = requested_size
-        if clean_query:
-            # Pull a wider candidate pool because CJ may include related-category
-            # recommendations even with best-match sorting.
-            search_size = min(max(requested_size * 3, 50), 100)
+        search_size = min(max(requested_size * 3, 50), 100) if clean_query else requested_size
         result = await CJClient().search_products(
             keyword=clean_query,
             page=min(max(page, 1), 1000),
             size=search_size,
             category_id=category_id,
-            country_code=country_code,
+            country_code=country_code.upper() if country_code else "",
             min_price=min_price,
             max_price=max_price,
             min_stock=max(min_stock, 0),
             order_by=order_by,
         )
         if not clean_query:
-            return result
-
+            return {**result, "currency": "USD", "destination_country": "US"}
         raw_products = result.get("products") or []
         relevant, rejected = rank_supplier_results(
             clean_query,
@@ -119,17 +136,17 @@ async def cj_products(q: str = "", page: int = 1, size: int = 20, category_id: s
             title_keys=("name",),
             limit=requested_size,
         )
-        result["raw_total"] = result.get("total")
-        result["products"] = relevant
-        result["total"] = len(relevant)
-        result["total_pages"] = 1
-        result["filtered_out"] = rejected
-        result["relevance_filtered"] = True
-        result["note"] = (
-            f"{rejected} résultat(s) hors sujet ignoré(s)."
-            if rejected
-            else "Résultats triés par pertinence."
-        )
+        result.update({
+            "raw_total": result.get("total"),
+            "products": relevant,
+            "total": len(relevant),
+            "total_pages": 1,
+            "filtered_out": rejected,
+            "relevance_filtered": True,
+            "currency": "USD",
+            "destination_country": "US",
+            "note": f"{rejected} résultat(s) hors sujet ignoré(s)." if rejected else "Résultats CJ triés par pertinence.",
+        })
         return result
     except CJError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -151,8 +168,7 @@ def candidates():
 @router.post("/candidates")
 def select_candidate(payload: CJCandidateIn):
     candidate_id = save_cj_candidate(payload.model_dump())
-    return {"selected": True, "candidate_id": candidate_id,
-            "message": "Produit ajouté à la sélection CJ. Aucun listing créé."}
+    return {"selected": True, "candidate_id": candidate_id, "message": "Produit CJ sélectionné. Route US/CN à calculer avant ajout."}
 
 
 @router.post("/candidates/{candidate_id}/analyze")
@@ -160,50 +176,50 @@ async def analyze_candidate(candidate_id: int, payload: CJAnalyzeIn):
     candidate = get_cj_candidate(candidate_id)
     if not candidate:
         raise HTTPException(404, "Sélection CJ introuvable")
+    if payload.destination_country.upper() != "US":
+        raise HTTPException(400, "v0.23 calcule uniquement la livraison vers les États-Unis")
+
     client = CJClient()
     try:
-        detail = await client.product_detail(candidate["cj_pid"])
-        variant = next((x for x in detail["variants"] if x["vid"] == payload.vid), None)
-        if not variant:
-            raise CJError("Cette variante CJ n'est plus disponible")
-        stocked = [x for x in variant.get("inventories", []) if x.get("stock", 0) > 0]
-        destination = payload.destination_country.upper()
-        source = next((x["country_code"] for x in stocked if x.get("country_code") == destination), None)
-        source = source or next((x["country_code"] for x in stocked if x.get("country_code") == "CN"), None)
-        source = source or (stocked[0].get("country_code") if stocked else "CN")
-        freight = await client.freight_options(variant["vid"], start_country=source,
-                                               destination_country=destination, postcode=payload.postcode)
-        if not freight:
-            raise CJError("CJ ne propose aucun transport pour cette variante vers la France")
-        exchange = await client.usd_to_eur()
-        chosen = freight[0]
-        supplier_eur = round(variant["price_usd"] * exchange["rate"], 2)
-        shipping_eur = round(chosen["price_usd"] * exchange["rate"], 2)
-        pricing = suggest_price({"supplier_cost": supplier_eur, "shipping_cost": shipping_eur})
+        landed = await resolve_cj_landed_offer(
+            client,
+            candidate["cj_pid"],
+            fallback_price_usd=float(candidate.get("price_usd") or 0),
+            preferred_variant_id=payload.vid,
+            destination_country="US",
+        )
+        requirements = route_requirements(str(landed.get("warehouse") or "US"))
+        pricing = suggest_price(
+            {"supplier_cost": landed["supplier_cost"], "shipping_cost": landed["shipping_cost"]},
+            min_margin_percent=float(requirements["min_margin_percent"]),
+            min_profit=float(requirements["min_profit"]),
+        )
         analysis = {
-            "variant": variant,
-            "source_country": source,
-            "destination_country": destination,
-            "postcode": payload.postcode,
-            "shipping": chosen,
-            "shipping_alternatives": freight[:5],
-            "shipping_methods_found": len(freight),
-            "exchange": exchange,
-            "supplier_cost_eur": supplier_eur,
-            "shipping_cost_eur": shipping_eur,
-            "landed_cost_eur": round(supplier_eur + shipping_eur, 2),
-            "suggested_price_eur": pricing["suggested_price"],
-            "minimum_viable_price_eur": pricing["minimum_viable_price"],
-            "estimated_profit_eur": pricing["profit"]["estimated_profit"],
+            "variant_id": landed["variant_id"],
+            "variant_sku": landed["variant_sku"],
+            "source_country": landed["warehouse"],
+            "destination_country": "US",
+            "shipping": {
+                "name": landed["freight_name"],
+                "price_usd": landed["shipping_cost"],
+                "delivery_days": f"{landed['shipping_days']} days",
+            },
+            "supplier_cost_usd": landed["supplier_cost"],
+            "shipping_cost_usd": landed["shipping_cost"],
+            "landed_cost_usd": landed["landed_cost"],
+            "suggested_price_usd": pricing["suggested_price"],
+            "minimum_viable_price_usd": pricing["minimum_viable_price"],
+            "estimated_profit_usd": pricing["profit"]["estimated_profit"],
             "margin_percent": pricing["profit"]["margin_percent"],
             "roi_percent": pricing["profit"]["roi_percent"],
-            "fees_included": True,
-            "market_price_checked": False,
+            "requirements": requirements,
+            "route": "CJ US" if landed["warehouse"] == "US" else "CJ China → US",
+            "currency": "USD",
             "dry_run": True,
         }
-        save_cj_candidate_analysis(candidate_id, analysis, detail["risk_flags"])
-        return {"candidate": get_cj_candidate(candidate_id), "detail": detail,
-                "message": "Analyse calculée en Dry-run. Aucune commande ni annonce créée."}
+        save_cj_candidate_analysis(candidate_id, analysis, landed.get("risk_flags") or [])
+        return {"candidate": get_cj_candidate(candidate_id), "analysis": analysis,
+                "message": "Coût livré US calculé en USD. Aucune commande ni annonce créée."}
     except CJError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -221,29 +237,34 @@ def candidate_to_product(candidate_id: int):
     if not candidate:
         raise HTTPException(404, "Sélection CJ introuvable")
     analysis = candidate.get("analysis") or {}
-    if analysis.get("landed_cost_eur") is None:
-        raise HTTPException(400, "Analysez d'abord le transport et la marge de ce produit CJ.")
-    supplier_id = ensure_provider_supplier("cj", "CJ Dropshipping", "CN")
-    delivery_text = str((analysis.get("shipping") or {}).get("delivery_days") or "")
-    delivery_values = [int(value) for value in re.findall(r"\d+", delivery_text)]
-    variant = analysis.get("variant") or {}
-    sku = str(variant.get("sku") or candidate.get("sku") or f"CJ-{candidate['cj_pid']}")[:50]
+    if analysis.get("landed_cost_usd") is None:
+        raise HTTPException(400, "Analysez d'abord le coût livré vers les États-Unis.")
+
+    supplier_id = ensure_provider_supplier("cj", "CJ Dropshipping", "US")
+    sku = str(analysis.get("variant_sku") or candidate.get("sku") or f"CJ-{candidate['cj_pid']}")[:50]
+    warehouse = str(analysis.get("source_country") or "").upper()
     product_id = upsert_product({
         "supplier_sku": sku,
         "title": candidate["name"],
-        "description": f"Produit CJ {candidate.get('category_name', '')}. Données fournisseur à vérifier avant publication.",
-        "supplier_cost": float(analysis.get("supplier_cost_eur") or candidate.get("price_usd") or 0),
-        "shipping_cost": float(analysis.get("shipping_cost_eur") or 0),
-        "stock": int(variant.get("stock") or candidate.get("stock") or 0),
-        "shipping_days": max(delivery_values, default=0),
-        "target_price": analysis.get("suggested_price_eur"),
-        "marketplace_id": "EBAY_FR",
-        "currency": "EUR",
+        "description": f"CJ Dropshipping · {'US warehouse' if warehouse == 'US' else 'China → US'}. Données revalidées avant publication.",
+        "supplier_cost": float(analysis.get("supplier_cost_usd") or 0),
+        "shipping_cost": float(analysis.get("shipping_cost_usd") or 0),
+        "stock": int(candidate.get("stock") or 0),
+        "shipping_days": int(str((analysis.get("shipping") or {}).get("delivery_days") or "0").split()[0] or 0),
+        "target_price": analysis.get("suggested_price_usd"),
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
         "images": [candidate["image_url"]] if candidate.get("image_url") else [],
         "aspects": {},
         "supplier_id": supplier_id,
         "product_status": "À tester",
-        "suggested_price": analysis.get("suggested_price_eur"),
+        "suggested_price": analysis.get("suggested_price_usd"),
+    })
+    save_cj_product_link(sku, {
+        "pid": candidate["cj_pid"],
+        "variant_id": analysis.get("variant_id") or "",
+        "warehouse": warehouse,
+        "risk_flags": candidate.get("risk_flags") or [],
     })
     return {"created": True, "product_id": product_id, "dry_run": True,
-            "message": "Produit ajouté au catalogue local. Aucune annonce eBay créée."}
+            "message": "Produit CJ ajouté au catalogue eBay US en USD."}

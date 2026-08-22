@@ -3,16 +3,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier_offers
 from app.services.cj import CJClient
-from app.services.margin_hunter import _ali_candidates, _deep_cj_candidate
+from app.services.margin_hunter import _deep_cj_candidate
 from app.services.sourcing_queries import build_supplier_search_queries
 from app.services.supplier_relevance import rank_supplier_results
 
 
 MAX_SUPPLIER_RESULTS = 8
-CJ_POOL_LIMIT = 6
-ALI_POOL_LIMIT = 12
+CJ_POOL_LIMIT = 8
 
 
 def _candidate_key(row: dict[str, Any], *fields: str) -> str:
@@ -36,7 +34,7 @@ async def _search_cj_variants(client: CJClient, queries: list[str]) -> tuple[lis
     failures: list[str] = []
     for query in queries:
         try:
-            payload = await client.search_products(keyword=query, size=40, min_stock=3, order_by=0)
+            payload = await client.search_products(keyword=query, size=50, min_stock=1, order_by=0)
         except Exception as exc:
             failures.append(f"{query}: {exc}")
             continue
@@ -59,32 +57,16 @@ async def _search_cj_variants(client: CJClient, queries: list[str]) -> tuple[lis
     return rows[:CJ_POOL_LIMIT], failures
 
 
-async def _search_ali_variants(queries: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
-    merged: dict[str, dict[str, Any]] = {}
-    failures: list[str] = []
-    for query in queries:
-        offers, errors = await aliexpress_dropship_supplier_offers(query)
-        for error in errors:
-            message = str(error.get("message") or error)
-            if "Aucun produit pertinent" not in message:
-                failures.append(f"{query}: {message}")
-        for offer in offers:
-            enriched = dict(offer)
-            enriched["matched_query"] = query
-            key = _candidate_key(enriched, "supplier_sku", "source_url")
-            _merge_best(merged, key, enriched)
-        if len(merged) >= ALI_POOL_LIMIT:
-            break
-
-    rows = sorted(merged.values(), key=lambda row: -float(row.get("match_strength") or 0))
-    return rows[:ALI_POOL_LIMIT], failures
-
-
 def _query_summary(queries: list[str]) -> str:
     return " / ".join(f"« {query} »" for query in queries)
 
 
-async def compare_shop_listing(title: str, competitor_price: float, *, limit: int = MAX_SUPPLIER_RESULTS) -> dict[str, Any]:
+async def compare_shop_listing(
+    title: str,
+    competitor_price: float,
+    *,
+    limit: int = MAX_SUPPLIER_RESULTS,
+) -> dict[str, Any]:
     title = str(title or "").strip()
     if len(title) < 2:
         raise ValueError("Titre eBay trop court")
@@ -98,7 +80,7 @@ async def compare_shop_listing(title: str, competitor_price: float, *, limit: in
 
     queries = build_supplier_search_queries(title, max_queries=3)
     if not queries:
-        raise ValueError("Impossible de construire une recherche fournisseur")
+        raise ValueError("Impossible de construire une recherche CJ")
 
     market = {"competition_points": 0.0, "demand_points": 0.0}
     candidates: list[dict[str, Any]] = []
@@ -108,79 +90,55 @@ async def compare_shop_listing(title: str, competitor_price: float, *, limit: in
     if cj_client.status().get("connected"):
         cj_products, cj_failures = await _search_cj_variants(cj_client, queries)
         if cj_products:
-            try:
-                exchange = await cj_client.usd_to_eur()
-                semaphore = asyncio.Semaphore(2)
-                jobs = [
-                    _deep_cj_candidate(
-                        cj_client,
-                        product,
-                        exchange_rate=float(exchange["rate"]),
-                        reference_price=reference_price,
-                        market=market,
-                        semaphore=semaphore,
-                    )
-                    for product in cj_products[:4]
-                ]
-                results = await asyncio.gather(*jobs) if jobs else []
-                for product, (candidate, error) in zip(cj_products[:4], results):
-                    if candidate:
-                        candidate["reference_source"] = "PRIX_BOUTIQUE_EBAY"
-                        candidate["matched_query"] = product.get("matched_query")
-                        evidence = list(candidate.get("quality_evidence") or [])
-                        evidence.insert(0, f"Recherche fournisseur : {product.get('matched_query')}")
-                        candidate["quality_evidence"] = evidence
-                        candidates.append(candidate)
-                    elif error:
-                        errors.append({"source": "CJ", "message": error})
-            except Exception as exc:
-                errors.append({"source": "CJ", "message": str(exc)})
+            semaphore = asyncio.Semaphore(2)
+            jobs = [
+                _deep_cj_candidate(
+                    cj_client,
+                    product,
+                    reference_price=reference_price,
+                    market=market,
+                    semaphore=semaphore,
+                )
+                for product in cj_products[:6]
+            ]
+            results = await asyncio.gather(*jobs) if jobs else []
+            for product, (candidate, error) in zip(cj_products[:6], results):
+                if candidate:
+                    candidate["reference_source"] = "EBAY_US_COMPETITOR_PRICE"
+                    candidate["matched_query"] = product.get("matched_query")
+                    evidence = list(candidate.get("quality_evidence") or [])
+                    evidence.insert(0, f"Recherche CJ : {product.get('matched_query')}")
+                    candidate["quality_evidence"] = evidence
+                    candidates.append(candidate)
+                elif error:
+                    errors.append({"source": "CJ", "message": error})
         elif cj_failures:
             errors.append({"source": "CJ", "message": cj_failures[0]})
         else:
             errors.append({
                 "source": "CJ",
-                "message": f"Aucun équivalent pertinent trouvé après recherches ciblées {_query_summary(queries)}",
+                "message": f"Aucun équivalent CJ pertinent trouvé après {_query_summary(queries)}",
             })
     else:
         errors.append({"source": "CJ", "message": "CJ n'est pas connecté"})
 
-    ali_offers, ali_failures = await _search_ali_variants(queries)
-    if ali_offers:
-        for offer in ali_offers:
-            built = _ali_candidates([offer], reference_price=reference_price, market=market)
-            for candidate in built:
-                candidate["reference_source"] = "PRIX_BOUTIQUE_EBAY"
-                candidate["matched_query"] = offer.get("matched_query")
-                evidence = list(candidate.get("quality_evidence") or [])
-                evidence.insert(0, f"Recherche fournisseur : {offer.get('matched_query')}")
-                candidate["quality_evidence"] = evidence
-                candidates.append(candidate)
-    elif ali_failures:
-        errors.append({"source": "AliExpress", "message": ali_failures[0]})
-    else:
-        errors.append({
-            "source": "AliExpress",
-            "message": f"Aucun équivalent pertinent trouvé après recherches ciblées {_query_summary(queries)}",
-        })
-
     candidates.sort(
         key=lambda row: (
-            0 if row.get("verified") else 1,
             0 if row.get("goal_hit") else 1,
+            0 if row.get("warehouse") == "US" else 1,
             -float(row.get("score") or 0),
         )
     )
     return {
         "title": title,
         "competitor_price": round(reference_price, 2),
-        "currency": "EUR",
+        "currency": "USD",
+        "marketplace": "EBAY_US",
         "search_queries": queries,
         "candidates": candidates[:limit],
         "errors": errors,
         "note": (
-            "Le titre eBay est réduit en recherches fournisseur ciblées avant comparaison. "
-            "CJ utilise un coût livré France calculé avant estimation de marge. "
-            "AliExpress reste préliminaire tant que son coût de livraison n'est pas confirmé."
+            "Spy eBay Shop compare uniquement les annonces eBay US à CJ. "
+            "Le coût livré vers les États-Unis est vérifié avant toute estimation de marge."
         ),
     }

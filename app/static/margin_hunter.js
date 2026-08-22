@@ -8,17 +8,15 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
 
-  function money(value, currency = 'EUR') {
-    if (value === null || value === undefined || value === '') return 'À confirmer';
+  function money(value) {
+    if (value === null || value === undefined || value === '') return '—';
     const amount = Number(value);
-    if (!Number.isFinite(amount)) return 'À confirmer';
-    return `${amount.toFixed(2)} ${currency}`;
+    return Number.isFinite(amount) ? `$${amount.toFixed(2)}` : '—';
   }
 
   function percent(value) {
-    if (value === null || value === undefined || value === '') return 'À confirmer';
     const amount = Number(value);
-    return Number.isFinite(amount) ? `${amount.toFixed(1)} %` : 'À confirmer';
+    return Number.isFinite(amount) ? `${amount.toFixed(1)} %` : '—';
   }
 
   function rememberCandidate(candidate) {
@@ -38,11 +36,11 @@
     panel.innerHTML = `
       <div class="panel-head">
         <div>
-          <span class="panel-kicker">MARGIN HUNTER</span>
-          <h2>Chasser les produits à forte marge</h2>
-          <p>Compare le prix eBay France aux coûts CJ / AliExpress. Objectif : coût livré ≤ 30 % du prix eBay.</p>
+          <span class="panel-kicker">MARGIN HUNTER · US</span>
+          <h2>Trouver les produits CJ rentables sur eBay US</h2>
+          <p>Prix eBay.com réel → coût CJ livré aux États-Unis → marge nette estimée. Stock US prioritaire, Chine seulement si les seuils renforcés passent.</p>
         </div>
-        <span class="status-badge good">Top 10</span>
+        <span class="status-badge good">CJ ONLY</span>
       </div>
       <form id="marginHunterForm" class="radar-form">
         <label class="full">Produit ou niche
@@ -55,11 +53,11 @@
             <option value="pet travel bowl"></option>
           </datalist>
         </label>
-        <div class="full radar-actions"><button class="btn btn-primary" type="submit">Chercher les meilleures marges</button></div>
+        <div class="full radar-actions"><button class="btn btn-primary" type="submit">Chercher les meilleures marges US</button></div>
       </form>
       <div id="marginHunterResults" class="empty-state compact">
-        <strong>Aucune chasse lancée</strong>
-        <span>Le bot mesure eBay puis classe les offres fournisseurs les plus intéressantes.</span>
+        <strong>Aucune recherche lancée</strong>
+        <span>Le bot compare eBay US à CJ en USD.</span>
       </div>`;
     head.insertAdjacentElement('afterend', panel);
   }
@@ -67,52 +65,50 @@
   function marketSummary(data) {
     const market = data.market || {};
     const demand = market.demand_proxy || {};
-    const demandText = market.amazon_signal_used
-      ? `${demand.label || 'À confirmer'}${demand.score != null ? ` · ${Math.round(Number(demand.score))}/100` : ''}`
-      : 'À confirmer (Amazon non utilisé)';
+    const demandText = demand.score != null
+      ? `${demand.label || 'Signal eBay'} · ${Math.round(Number(demand.score))}/100`
+      : 'non mesurée';
     return `
       <div class="info-box">
-        <strong>Référence eBay : ${esc(money(market.reference_price, market.currency || 'EUR'))}</strong>
-        <p>${esc(market.active_listings ?? 0)} annonce(s) actives · concurrence ${esc(market.competition || 'non mesurée')} · demande proxy ${esc(demandText)} · objectif coût livré ≤ ${esc(data.target_landed_ratio_percent || 30)} %.</p>
+        <strong>eBay US : ${esc(money(market.reference_price))} médian</strong>
+        <p>${esc(market.active_listings ?? 0)} annonce(s) actives · concurrence ${esc(market.competition || 'non mesurée')} · demande proxy ${esc(demandText)}.</p>
       </div>`;
   }
 
   function candidateCard(candidate, rank) {
     const id = rememberCandidate(candidate);
-    const verified = Boolean(candidate.verified);
-    const confidenceClass = verified ? 'good' : 'neutral';
     const image = candidate.image_url
       ? `<img src="${esc(candidate.image_url)}" alt="" loading="lazy">`
-      : '<div class="image-placeholder">API</div>';
-    const shipping = verified
-      ? `${money(candidate.shipping_cost)} · ${candidate.shipping_days ?? '—'} j`
-      : `À confirmer · budget max ${money(candidate.shipping_budget_to_30)}`;
-    const margin = verified
-      ? percent(candidate.margin_percent)
-      : `plafond ${percent(candidate.margin_ceiling_percent)}`;
-    const landed = verified ? money(candidate.landed_cost) : 'À confirmer';
-    const goal = candidate.goal_hit ? '<span class="status-badge good">Objectif ≤30% atteint</span>' : '';
-    const addLabel = verified ? 'Ajouter aux Produits' : 'Ajouter à valider';
-    const sourceLink = candidate.source_url
-      ? `<a class="mini-btn" href="${esc(candidate.source_url)}" target="_blank" rel="noopener">Voir le produit ↗</a>`
-      : '';
+      : '<div class="image-placeholder">CJ</div>';
+    const route = candidate.route || (candidate.warehouse === 'US' ? 'CJ US' : 'CJ China → US');
+    const requirements = candidate.requirements || {};
+    const goal = candidate.goal_hit
+      ? '<span class="status-badge good">Marge + coût cible OK</span>'
+      : candidate.route_eligible
+        ? '<span class="status-badge neutral">Route exploitable</span>'
+        : '<span class="status-badge danger">Hors seuils</span>';
+    const add = candidate.route_eligible
+      ? `<button class="mini-btn primary" data-margin-add="${id}">Ajouter aux Produits</button>`
+      : '<span class="candidate-pending">Ne pas lancer</span>';
     return `
       <article class="cj-card margin-hunter-card">
         ${image}
         <div class="cj-card-body">
-          <div class="radar-market-head"><strong>#${rank} · ${esc(candidate.provider)}</strong><span class="status-badge ${confidenceClass}">${esc(candidate.confidence || '')}</span></div>
-          <h3>${esc(candidate.name || 'Produit')}</h3>
-          <div class="cj-price">Score ${esc(candidate.score ?? 0)}/100 · ${esc(candidate.verdict || '')}</div>
+          <div class="radar-market-head"><strong>#${rank} · ${esc(route)}</strong><span class="status-badge ${candidate.warehouse === 'US' ? 'good' : 'neutral'}">${esc(candidate.verdict || '')}</span></div>
+          <h3>${esc(candidate.name || 'CJ product')}</h3>
+          <div class="cj-price">Score ${esc(candidate.score ?? 0)}/100</div>
           <div class="cj-card-meta">
             <span>Produit ${esc(money(candidate.supplier_cost))}</span>
-            <span>Livraison ${esc(shipping)}</span>
-            <span>Coût livré ${esc(landed)}</span>
-            <span>eBay ${esc(money(candidate.reference_price))}</span>
-            <span>Ratio ${esc(percent(candidate.cost_ratio_percent))}</span>
-            <span>Marge ${esc(margin)}</span>
-            <span>Pertinence ${esc(Math.round(Number(candidate.match_strength || 0) * 100))}%</span>
+            <span>Transport ${esc(money(candidate.shipping_cost))} · ${esc(candidate.shipping_days ?? '—')} j</span>
+            <span>Coût livré ${esc(money(candidate.landed_cost))}</span>
+            <span>eBay US ${esc(money(candidate.reference_price))}</span>
+            <span>Ratio coût ${esc(percent(candidate.cost_ratio_percent))}</span>
+            <span>Marge ${esc(percent(candidate.margin_percent))}</span>
+            <span>Profit ${esc(money(candidate.estimated_profit))}</span>
+            <span>Stock route ${esc(candidate.stock ?? '—')}</span>
           </div>
-          <div class="panel-actions">${goal}<button class="mini-btn primary" data-margin-add="${id}">${addLabel}</button>${sourceLink}</div>
+          <small class="seller">Seuil ${candidate.warehouse === 'CN' ? 'Chine' : 'US'} : marge ≥ ${esc(requirements.min_margin_percent ?? '—')} % · profit ≥ ${esc(money(requirements.min_profit))} · stock ≥ ${esc(requirements.min_stock ?? '—')} · délai ≤ ${esc(requirements.max_shipping_days ?? '—')} j</small>
+          <div class="panel-actions">${goal}${add}</div>
         </div>
       </article>`;
   }
@@ -124,14 +120,15 @@
     if (!candidates.length) {
       const error = (data.errors || []).find(item => !String(item.message || '').includes('hors sujet'));
       area.className = 'empty-state compact';
-      area.innerHTML = `<strong>Aucun candidat rentable trouvé</strong><span>${esc(error?.message || 'Essayez un produit plus précis ou une autre niche.')}</span>`;
+      area.innerHTML = `<strong>Aucun candidat CJ exploitable</strong><span>${esc(error?.message || 'Essayez un autre produit ou une niche plus précise.')}</span>`;
       return;
     }
-    const verified = candidates.filter(item => item.verified).length;
-    const goalHits = candidates.filter(item => item.goal_hit).length;
+    const us = candidates.filter(item => item.warehouse === 'US').length;
+    const cn = candidates.filter(item => item.warehouse === 'CN').length;
+    const eligible = candidates.filter(item => item.route_eligible).length;
     area.className = 'margin-hunter-results';
     area.innerHTML = `${marketSummary(data)}
-      <div class="info-box"><strong>${candidates.length} candidat(s) classé(s)</strong><p>${verified} marge(s) vérifiée(s) avec transport · ${goalHits} candidat(s) sous l’objectif 30 %. AliExpress reste préliminaire si le transport manque.</p></div>
+      <div class="info-box"><strong>${candidates.length} candidat(s) CJ</strong><p>${us} route(s) US · ${cn} route(s) Chine → US · ${eligible} exploitable(s) selon les seuils.</p></div>
       <div class="radar-supplier-grid">${candidates.map((candidate, index) => candidateCard(candidate, index + 1)).join('')}</div>
       <small class="seller">${esc(data.note || '')}</small>`;
   }
@@ -143,9 +140,9 @@
     if (!query || !area) return;
     const button = form.querySelector('button[type="submit"]');
     const previous = button?.textContent;
-    if (button) { button.disabled = true; button.textContent = 'Analyse eBay + fournisseurs…'; }
+    if (button) { button.disabled = true; button.textContent = 'Analyse eBay US + CJ…'; }
     area.className = 'loading';
-    area.textContent = 'Mesure du marché eBay, calcul des coûts CJ et classement des marges…';
+    area.textContent = 'Mesure eBay US puis calcul du coût livré CJ vers les États-Unis…';
     try {
       const response = await fetch('/api/radar/margin-hunter', {
         method: 'POST',
@@ -153,22 +150,22 @@
         body: JSON.stringify({keyword: query, limit: 10}),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || `Erreur ${response.status}`);
+      if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : data.detail?.message || `Erreur ${response.status}`);
       renderResults(area, data);
     } catch (error) {
       area.className = 'error-box';
       area.textContent = error.message;
     } finally {
-      if (button) { button.disabled = false; button.textContent = previous || 'Chercher les meilleures marges'; }
+      if (button) { button.disabled = false; button.textContent = previous || 'Chercher les meilleures marges US'; }
     }
   }
 
   async function addCandidate(id, button) {
     const candidate = candidateStore.get(id);
-    if (!candidate?.add_payload || !button) return;
+    if (!candidate?.add_payload || !candidate.route_eligible || !button) return;
     const previous = button.textContent;
     button.disabled = true;
-    button.textContent = candidate.verified ? 'Recalcul & ajout…' : 'Ajout…';
+    button.textContent = 'Revalidation CJ…';
     try {
       const response = await fetch('/api/supplier-flow/add', {
         method: 'POST',
@@ -176,11 +173,10 @@
         body: JSON.stringify(candidate.add_payload),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || `Erreur ${response.status}`);
+      if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : data.detail?.message || `Erreur ${response.status}`);
       button.textContent = 'Ajouté ✓';
       button.classList.remove('primary');
       button.title = data.message || 'Produit ajouté';
-      if (!data.pricing_ready) alert(data.message || 'Produit ajouté, mais la livraison reste à confirmer.');
     } catch (error) {
       button.disabled = false;
       button.textContent = previous;
@@ -207,5 +203,4 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once: true});
   else run();
   setTimeout(run, 500);
-  setTimeout(run, 1500);
 })();

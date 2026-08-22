@@ -3,16 +3,17 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier_offers
 from app.services.cj import CJClient
-from app.services.connections import connection_statuses
-from app.services.db import (delete_supplier, get_supplier, list_factory_leads, list_rfqs,
-                             list_suppliers, list_trend_discoveries, save_supplier)
-from app.services.marketplace_supplier_sources import (
-    aliexpress_supplier_status,
-    amazon_supplier_offers,
+from app.services.db import (
+    delete_supplier,
+    get_supplier,
+    list_factory_leads,
+    list_rfqs,
+    list_suppliers,
+    save_supplier,
 )
 from app.services.supplier_directory import SUPPLIER_DIRECTORY, search_supplier_directory
+from app.services.supplier_relevance import rank_supplier_results
 
 router = APIRouter(prefix="/api/suppliers", tags=["Suppliers"])
 
@@ -22,7 +23,7 @@ class SupplierIn(BaseModel):
     contact_name: str = ""
     email: str = ""
     website: str = ""
-    country: str = Field(default="FR", min_length=2, max_length=2)
+    country: str = Field(default="US", min_length=2, max_length=2)
     notes: str = ""
     provider_code: str = Field(default="", max_length=50)
     supplier_type: str = Field(default="MANUEL", max_length=30)
@@ -39,118 +40,133 @@ class FactoryDiscoveryIn(BaseModel):
 
 @router.get("")
 def suppliers():
+    # Existing manual rows are preserved in the database for backwards compatibility,
+    # but the v0.23 operating interface uses CJ only.
     return list_suppliers()
 
 
 @router.get("/directory")
-def supplier_directory(q: str = Query(default="", max_length=80),
-                       category: str = Query(default="", max_length=40),
-                       catalog: str = Query(default="", max_length=20)):
+def supplier_directory(
+    q: str = Query(default="", max_length=80),
+    category: str = Query(default="", max_length=40),
+    catalog: str = Query(default="", max_length=20),
+):
     rows = search_supplier_directory(q, category, catalog)
     categories = sorted({category for row in SUPPLIER_DIRECTORY for category in row["categories"]})
     return {
-        "results": rows, "total": len(rows), "categories": categories,
-        "checked_at": "2026-08-18",
-        "note": "Annuaire de pistes. Un badge CSV à demander n'est pas une garantie : confirmez le format, les droits d'utilisation, le stock et la fréquence de mise à jour avec le fournisseur.",
+        "results": rows,
+        "total": len(rows),
+        "categories": categories,
+        "legacy": True,
+        "note": "Legacy directory kept for a future Shopify/sourcing phase; not used by v0.23 eBay US operations.",
     }
 
 
 @router.get("/hub")
 def supplier_hub():
-    connected = {row["id"]: row for row in connection_statuses()}
     cj = CJClient().status()
-    amazon = connected["amazon"]
-    providers = [
-        {
-            "id": "cj", "name": "CJ Dropshipping", "kind": "Catalogue dropshipping",
-            "connected": cj["connected"], "configured": cj["configured"],
-            "status": "Connecté" if cj["connected"] else "À reconnecter" if cj.get("recovery_required") else "À connecter",
-            "catalog": True, "supplier": True, "available_in_products": cj["connected"], "url": "https://cjdropshipping.com/",
-            "note": "Catalogue, stock, variantes et devis transport en lecture seule.",
-            "capabilities": {
-                "search": True, "price": True, "stock": True, "shipping": True,
-                "variants": True, "margin_analysis": True,
-            },
+    provider = {
+        "id": "cj",
+        "name": "CJ Dropshipping",
+        "kind": "Unique active supplier",
+        "connected": cj["connected"],
+        "configured": cj["configured"],
+        "status": "Connecté" if cj["connected"] else "À reconnecter" if cj.get("recovery_required") else "À connecter",
+        "catalog": True,
+        "supplier": True,
+        "available_in_products": cj["connected"],
+        "url": "https://cjdropshipping.com/",
+        "note": "eBay US only · CJ US warehouse first · China only under stricter profitability rules.",
+        "capabilities": {
+            "search": True,
+            "price": True,
+            "stock": True,
+            "shipping": True,
+            "variants": True,
+            "margin_analysis": True,
+            "us_warehouse_first": True,
+            "china_fallback": True,
         },
-        {
-            **amazon,
-            "name": "Amazon France",
-            "kind": "Fournisseur marketplace",
-            "catalog": True,
-            "supplier": True,
-            "available_in_products": amazon["connected"],
-            "url": "https://www.amazon.fr/",
-            "note": "Catalogue et prix Amazon intégrés au sourcing avec le même schéma fournisseur que CJ.",
-            "capabilities": {
-                "search": True, "price": True, "stock": "when_available",
-                "shipping": "when_available", "variants": "when_available",
-                "margin_analysis": True,
-            },
-        },
-        aliexpress_supplier_status(),
-    ]
-    manual, factories, rfqs = list_suppliers(), list_factory_leads(), list_rfqs()
+    }
     return {
-        "providers": providers, "manual": manual, "factories": factories, "rfqs": rfqs,
+        "providers": [provider],
+        "manual": [],
+        "factories": [],
+        "rfqs": [],
         "metrics": {
-            "connected_catalogs": sum(1 for row in providers if row.get("connected")),
-            "registered_suppliers": len(manual), "factory_contacts": len(factories),
-            "rfq_drafts": sum(1 for row in rfqs if row.get("status") == "BROUILLON"),
+            "connected_catalogs": 1 if cj["connected"] else 0,
+            "registered_suppliers": 1,
+            "factory_contacts": 0,
+            "rfq_drafts": 0,
         },
+        "operating_mode": "EBAY_US_CJ_ONLY",
         "dry_run": True,
     }
 
 
 @router.get("/source-search")
-async def source_search(provider: str = Query(pattern="^(amazon|aliexpress)$"),
-                        q: str = Query(min_length=2, max_length=120)):
+async def source_search(
+    provider: str = Query(pattern="^cj$"),
+    q: str = Query(min_length=2, max_length=120),
+):
     keyword = q.strip()
-    if len(keyword) < 2:
-        raise HTTPException(400, "Mot-clé trop court")
-    if provider == "amazon":
-        offers, errors = await amazon_supplier_offers(keyword)
-        if not offers and not errors:
-            raise HTTPException(400, "Amazon n'est pas connecté dans l'onglet Connexions")
-    else:
-        offers, errors = await aliexpress_dropship_supplier_offers(keyword)
-        if not offers and not errors:
-            raise HTTPException(400, "AliExpress n'est pas connecté dans l'onglet Connexions")
-    if not offers and errors:
-        raise HTTPException(400, errors[0]["message"])
-    return {"provider": provider, "keyword": keyword, "offers": offers, "errors": errors,
-            "measured_only": True}
+    client = CJClient()
+    if not client.status().get("connected"):
+        raise HTTPException(400, "CJ n'est pas connecté")
+    try:
+        payload = await client.search_products(keyword=keyword, size=50, min_stock=1, order_by=0)
+        relevant, rejected = rank_supplier_results(
+            keyword,
+            payload.get("products") or [],
+            title_keys=("name",),
+            limit=20,
+        )
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+    offers = [
+        {
+            "provider": "CJ",
+            "supplier_sku": row.get("sku") or row.get("cj_pid") or "",
+            "cj_pid": row.get("cj_pid") or "",
+            "name": row.get("name") or "CJ product",
+            "product_cost": row.get("price_usd"),
+            "shipping_cost": None,
+            "currency": "USD",
+            "stock": row.get("stock"),
+            "shipping_days": None,
+            "warehouse": "US first · CN fallback",
+            "image_url": row.get("image_url") or "",
+            "source_url": "",
+            "match_strength": row.get("match_strength"),
+        }
+        for row in relevant
+    ]
+    return {
+        "provider": provider,
+        "keyword": keyword,
+        "offers": offers,
+        "errors": [],
+        "filtered_out": rejected,
+        "measured_only": True,
+    }
 
 
+# Legacy CRUD is retained so historical rows do not become inaccessible, but the
+# new interface does not expose manual suppliers during the eBay validation phase.
 @router.post("/factory-discovery")
 def factory_discovery(payload: FactoryDiscoveryIn):
     query = payload.query.strip()
-    origin = "manual"
-    if not query:
-        latest = [row for row in list_trend_discoveries(12)
-                  if row.get("source") == "YOUTUBE_SHORTS_COMMERCE"][:1]
-        themes = latest[0]["themes"] if latest else []
-        chosen = next((row for row in themes if row.get("product_hint")), themes[0] if themes else None)
-        query = str((chosen or {}).get("keyword") or "").strip()
-        origin = "trend" if query else "manual"
     if len(query) < 2:
-        raise HTTPException(400, "Indiquez un produit ou lancez d’abord la détection automatique des tendances.")
+        raise HTTPException(400, "Indiquez un produit à rechercher.")
     encoded = quote_plus(query)
-    directories = [
-        {"name": "Alibaba.com", "url": f"https://www.alibaba.com/trade/search?SearchText={encoded}",
-         "strength": "Usines, MOQ, Trade Assurance et RFQ"},
-        {"name": "Global Sources", "url": "https://www.globalsources.com/manufacturers/",
-         "strength": f"Rechercher « {query} » parmi les fabricants export"},
-        {"name": "Made-in-China", "url": f"https://www.made-in-china.com/productdirectory.do?word={encoded}",
-         "strength": "Fabricants audités et fiches export"},
-        {"name": "Europages", "url": f"https://www.europages.co.uk/companies/{encoded}.html",
-         "strength": "Fabricants et grossistes européens"},
-    ]
-    matches = [row for row in list_factory_leads()
-               if query.lower() in f"{row.get('company', '')} {row.get('notes', '')}".lower()]
     return {
-        "query": query, "origin": origin, "directories": directories, "known_contacts": matches,
-        "next_step": "Vérifiez l'identité, les certifications et l'échantillon avant d'enregistrer un fabricant.",
-        "automatic_limits": "Sans API ou flux public autorisé, le bot n'invente ni email ni lien CSV et vous laisse valider la fiche source.",
+        "query": query,
+        "origin": "manual",
+        "directories": [
+            {"name": "Alibaba.com", "url": f"https://www.alibaba.com/trade/search?SearchText={encoded}", "strength": "Future Shopify sourcing"},
+        ],
+        "known_contacts": [],
+        "legacy": True,
     }
 
 

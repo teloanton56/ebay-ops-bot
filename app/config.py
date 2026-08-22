@@ -16,10 +16,8 @@ def _load_env_file(path: str = ".env") -> None:
         key, value = key.strip(), value.strip().strip('"').strip("'")
         os.environ.setdefault(key, value)
 
+
 _load_env_file()
-# On a cloud host the application code can be replaced on every deployment while
-# the mounted data directory stays intact.  Loading a second, persistent env file
-# lets settings changed from the UI survive those deployments.
 _load_env_file(os.getenv("APP_RUNTIME_ENV_PATH", ""))
 
 from dataclasses import dataclass, field
@@ -27,7 +25,6 @@ from functools import lru_cache
 
 
 def _env(name: str, default: str = ""):
-    """Read environment values when Settings is instantiated, not when this module is imported."""
     return field(default_factory=lambda: os.getenv(name, default))
 
 
@@ -70,33 +67,60 @@ class Settings:
     ebay_client_id: str = _env("EBAY_CLIENT_ID")
     ebay_client_secret: str = _env("EBAY_CLIENT_SECRET")
     ebay_runame: str = _env("EBAY_RUNAME")
-    ebay_locale: str = _env("EBAY_LOCALE", "fr-FR")
-    ebay_marketplace_id: str = _env("EBAY_MARKETPLACE_ID", "EBAY_FR")
-    ebay_currency: str = _env("EBAY_CURRENCY", "EUR")
+
+    # v0.23 operating profile: one market, one currency, one supplier.
+    # These are intentionally not environment-overridable so stale Render values
+    # from the former France configuration cannot silently switch the bot back.
+    ebay_locale: str = "en-US"
+    ebay_marketplace_id: str = "EBAY_US"
+    ebay_currency: str = "USD"
+
     ebay_account_deletion_endpoint: str = _env(
         "EBAY_ACCOUNT_DELETION_ENDPOINT",
         "https://ebay-ops-bot.onrender.com/api/ebay/account-deletion",
     )
-    # Never ship a verification secret in source. Configure this as a Render/env secret.
     ebay_account_deletion_verification_token: str = _env("EBAY_ACCOUNT_DELETION_VERIFICATION_TOKEN", "")
 
     ebay_payment_policy_id: str = _env("EBAY_PAYMENT_POLICY_ID")
     ebay_return_policy_id: str = _env("EBAY_RETURN_POLICY_ID")
     ebay_fulfillment_policy_id: str = _env("EBAY_FULFILLMENT_POLICY_ID")
-    ebay_merchant_location_key: str = _env("EBAY_MERCHANT_LOCATION_KEY", "main-warehouse")
-    ebay_location_country: str = _env("EBAY_LOCATION_COUNTRY", "FR")
+
+    # eBay item location must match the actual CJ dispatch country. Configure
+    # real merchant location keys before enabling writes; no fake US location is used.
+    ebay_cj_us_location_key: str = _env("EBAY_CJ_US_LOCATION_KEY", "")
+    ebay_cj_cn_location_key: str = _env("EBAY_CJ_CN_LOCATION_KEY", "")
+    ebay_merchant_location_key: str = _env("EBAY_MERCHANT_LOCATION_KEY", "")
+    ebay_location_country: str = "US"
     ebay_location_postal_code: str = _env("EBAY_LOCATION_POSTAL_CODE")
     ebay_location_city: str = _env("EBAY_LOCATION_CITY")
 
-    default_ebay_fee_percent: float = _env_float("DEFAULT_EBAY_FEE_PERCENT", "12.0")
+    # Conservative eBay US baseline for a new/Starter seller in most categories.
+    # The pricing engine can later replace this with category-specific fees.
+    default_ebay_fee_percent: float = _env_float("DEFAULT_EBAY_FEE_PERCENT", "13.6")
     default_ad_rate_percent: float = _env_float("DEFAULT_AD_RATE_PERCENT", "3.0")
-    default_fixed_fee: float = _env_float("DEFAULT_FIXED_FEE", "0.35")
+    default_fixed_fee: float = _env_float("DEFAULT_FIXED_FEE", "0.40")
+    ebay_low_order_fee: float = _env_float("EBAY_LOW_ORDER_FEE", "0.30")
+    ebay_standard_order_fee: float = _env_float("EBAY_STANDARD_ORDER_FEE", "0.40")
     default_return_reserve_percent: float = _env_float("DEFAULT_RETURN_RESERVE_PERCENT", "2.0")
-    min_margin_percent: float = _env_float("MIN_MARGIN_PERCENT", "15.0")
-    min_profit_eur: float = _env_float("MIN_PROFIT_EUR", "3.0")
-    min_stock: int = _env_int("MIN_STOCK", "3")
+
+    # Global catalogue safety floor. CJ route-specific thresholds below are stricter.
+    min_margin_percent: float = _env_float("MIN_MARGIN_PERCENT", "20.0")
+    min_profit_eur: float = _env_float("MIN_PROFIT_EUR", "5.0")
+    min_stock: int = _env_int("MIN_STOCK", "10")
     max_shipping_days: int = _env_int("MAX_SHIPPING_DAYS", "7")
     max_supplier_price_jump_percent: float = _env_float("MAX_SUPPLIER_PRICE_JUMP_PERCENT", "20.0")
+
+    # CJ US-first route policy.
+    cj_us_min_margin_percent: float = _env_float("CJ_US_MIN_MARGIN_PERCENT", "20.0")
+    cj_us_min_profit_usd: float = _env_float("CJ_US_MIN_PROFIT_USD", "5.0")
+    cj_us_min_stock: int = _env_int("CJ_US_MIN_STOCK", "10")
+    cj_us_max_shipping_days: int = _env_int("CJ_US_MAX_SHIPPING_DAYS", "7")
+
+    # China is a fallback only when the economics compensate for the slower route.
+    cj_cn_min_margin_percent: float = _env_float("CJ_CN_MIN_MARGIN_PERCENT", "30.0")
+    cj_cn_min_profit_usd: float = _env_float("CJ_CN_MIN_PROFIT_USD", "8.0")
+    cj_cn_min_stock: int = _env_int("CJ_CN_MIN_STOCK", "20")
+    cj_cn_max_shipping_days: int = _env_int("CJ_CN_MAX_SHIPPING_DAYS", "12")
 
     scheduler_enabled: bool = _env_bool("SCHEDULER_ENABLED", "false")
     scheduler_sync_minutes: int = _env_int("SCHEDULER_SYNC_MINUTES", "30")
@@ -110,13 +134,12 @@ class Settings:
         return self.app_access_mode.strip().lower() == "cloud"
 
     @property
-    def ebay_effective_env(self) -> str:
-        """Prefer the environment encoded in an eBay App ID over a stale UI setting.
+    def min_profit_amount(self) -> float:
+        """Currency-neutral alias retained while legacy DB/settings names are migrated."""
+        return self.min_profit_eur
 
-        eBay issues separate keysets for Sandbox and Production. Production App IDs
-        contain `-PRD-` and Sandbox App IDs contain `-SBX-`. This prevents a valid
-        Production key from ever being sent to the Sandbox OAuth host (and vice versa).
-        """
+    @property
+    def ebay_effective_env(self) -> str:
         client_id = self.ebay_client_id.strip().upper()
         if "-PRD-" in client_id:
             return "production"

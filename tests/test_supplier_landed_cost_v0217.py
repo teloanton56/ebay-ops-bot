@@ -8,7 +8,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_supplier_flow_keeps_cj_product_id_and_uses_shared_real_freight_engine():
+def test_supplier_flow_keeps_cj_product_id_and_uses_shared_us_landed_engine():
     flow = read("app/routers/supplier_flow.py")
     landed = read("app/services/cj_landed.py")
     assert "cj_pid" in flow
@@ -16,25 +16,30 @@ def test_supplier_flow_keeps_cj_product_id_and_uses_shared_real_freight_engine()
     assert "save_cj_product_link" in flow
     assert "client.product_detail(pid)" in landed
     assert "client.freight_options" in landed
-    assert "client.usd_to_eur" in landed
+    assert "usd_to_eur" not in landed
+    assert 'destination_country="US"' in flow
     assert '"shipping_cost": landed["shipping_cost"]' in flow
     assert '"target_price": pricing["suggested_price"]' in flow
 
 
-def test_margin_hunter_and_supplier_add_share_same_cj_landed_resolver():
+def test_margin_hunter_supplier_add_and_refresh_share_same_cj_resolver():
     flow = read("app/routers/supplier_flow.py")
     hunter = read("app/services/margin_hunter.py")
+    refresh = read("app/services/supplier_refresh.py")
     assert "resolve_cj_landed_offer" in flow
     assert "resolve_cj_landed_offer" in hunter
+    assert "resolve_cj_landed_offer" in refresh
     assert "def _choose_freight" not in hunter
     assert "def _source_country" not in hunter
 
 
-def test_unknown_marketplace_logistics_are_not_marked_as_free_shipping():
-    source = read("app/routers/supplier_flow.py")
-    assert "logistics_complete = payload.shipping_cost is not None" in source
-    assert '"shipping_days": payload.shipping_days if logistics_complete else 99' in source
-    assert '"target_price": pricing["suggested_price"] if pricing else None' in source
+def test_supplier_flow_has_no_generic_marketplace_logistics_path_anymore():
+    source = read("app/routers/supplier_flow.py").lower()
+    assert 'payload.provider.strip().lower() != "cj"' in source
+    assert "v0.23 utilise uniquement cj dropshipping" in source
+    assert "logistics_complete" not in source
+    assert "aliexpress" not in source
+    assert "amazon" not in source
 
 
 def test_missing_target_price_does_not_create_fake_minus_100_margin():
@@ -51,19 +56,19 @@ def test_risk_engine_treats_missing_price_and_delivery_as_missing_data():
     assert "if not has_target_price" in source
 
 
-def test_manual_price_calculation_refuses_unknown_delivery_and_sets_target():
+def test_manual_price_calculation_refuses_unknown_us_delivery_and_sets_target():
     source = read("app/routers/products.py")
     assert "shipping_days <= 0 or shipping_days >= 99" in source
-    assert "Impossible de calculer un prix fiable tant que la livraison n'est pas confirmée." in source
+    assert "livraison US n'est pas confirmée" in source
     assert 'set_product_fields(product_id, suggested_price=result["suggested_price"], target_price=result["suggested_price"])' in source
 
 
-def test_supplier_ui_explains_shipping_state():
+def test_supplier_ui_explains_us_and_china_route_state():
     source = read("app/static/supplier_flow_v2.js")
-    assert "Calculer livraison & ajouter" in source
-    assert "Transport calculé à l’ajout" in source
-    assert "Livraison à confirmer" in source
-    assert "livraison à confirmer" in source
+    assert "Calculer route US/CN & ajouter" in source
+    assert "US warehouse prioritaire" in source
+    assert "Chine seulement si rentable" in source
+    assert "$" in source
 
 
 def test_current_version_and_cache_include_landed_cost_ui():

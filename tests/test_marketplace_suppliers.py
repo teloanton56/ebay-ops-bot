@@ -1,91 +1,63 @@
-import asyncio
+from pathlib import Path
 
-from app.services.aliexpress_dropship_search import (
-    AliExpressDropshipSearchClient,
-    aliexpress_dropship_supplier_offers,
-)
-from app.services.marketplace_supplier_sources import amazon_supplier_offers
+from fastapi.testclient import TestClient
+
+from app.main import app
 
 
-def test_amazon_supplier_offers_normalize_catalog(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.marketplace_supplier_sources.connection_status",
-        lambda provider: {"connected": provider == "amazon"},
-    )
-
-    async def fake_search(self, keyword, marketplace="AMAZON_FR", page_size=20, include_pricing=True):
-        return {
-            "products": [
-                {
-                    "asin": "B0TEST123",
-                    "title": "Ventilateur portable rechargeable",
-                    "price": 12.49,
-                    "currency": "EUR",
-                    "image_url": "https://example.test/amazon.jpg",
-                    "url": "https://www.amazon.fr/dp/B0TEST123",
-                    "offer_count": 5,
-                    "sales_rank": 850,
-                }
-            ]
-        }
-
-    monkeypatch.setattr(
-        "app.services.marketplace_supplier_sources.AmazonRadarClient.search_catalog",
-        fake_search,
-    )
-    offers, errors = asyncio.run(amazon_supplier_offers("ventilateur portable"))
-    assert errors == []
-    assert len(offers) == 1
-    offer = offers[0]
-    assert offer["provider_code"] == "amazon"
-    assert offer["supplier_sku"] == "B0TEST123"
-    assert offer["product_cost"] == 12.49
-    assert offer["shipping_known"] is False
-    assert offer["sales_rank"] == 850
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_aliexpress_dropship_offers_normalize_text_search(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.aliexpress_dropship_search.aliexpress_connection_status",
-        lambda: {"connected": True},
-    )
-
-    async def fake_search(self, keyword, page_size=10):
-        return [
-            {
-                "itemId": 123456789,
-                "title": "Portable USB desk fan",
-                "itemMainPic": "//example.test/aliexpress.jpg",
-                "itemUrl": "https://www.aliexpress.com/item/123456789.html",
-                "targetSalePrice": "6.95",
-                "targetOriginalPriceCurrency": "EUR",
-                "score": "4.7",
-                "orders": "321",
-            }
-        ]
-
-    monkeypatch.setattr(AliExpressDropshipSearchClient, "search", fake_search)
-    offers, errors = asyncio.run(aliexpress_dropship_supplier_offers("portable fan"))
-    assert errors == []
-    assert len(offers) == 1
-    offer = offers[0]
-    assert offer["provider_code"] == "aliexpress"
-    assert offer["supplier_sku"] == "123456789"
-    assert offer["product_cost"] == 6.95
-    assert offer["currency"] == "EUR"
-    assert offer["shipping_cost"] is None
-    assert offer["shipping_days"] is None
-    assert offer["shipping_known"] is False
-    assert offer["rating"] == 4.7
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_aliexpress_dropship_signature_is_stable(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.aliexpress_dropship_search.load_aliexpress_credentials",
-        lambda: {"app_key": "key", "app_secret": "secret", "access_token": "token"},
-    )
-    client = AliExpressDropshipSearchClient()
-    first = client._sign({"app_key": "key", "method": "demo", "keyword": "fan"})
-    second = client._sign({"keyword": "fan", "method": "demo", "app_key": "key"})
-    assert first == second
-    assert len(first) == 64
+def test_amazon_and_aliexpress_are_not_active_supplier_searches():
+    supplier_flow = read("app/routers/supplier_flow.py").lower()
+    suppliers = read("app/routers/suppliers.py").lower()
+    hunter = read("app/services/margin_hunter.py").lower()
+    shop_spy = read("app/services/shop_spy_sourcing.py").lower()
+
+    assert "amazon_supplier_offers" not in supplier_flow
+    assert "aliexpress" not in supplier_flow
+    assert "amazon_supplier_offers" not in hunter
+    assert "aliexpress" not in hunter
+    assert "aliexpress" not in shop_spy
+    assert 'pattern="^cj$"' in suppliers
+
+
+def test_retired_marketplace_supplier_endpoints_return_gone():
+    with TestClient(app) as client:
+        for provider in ("amazon", "aliexpress"):
+            response = client.post(
+                "/api/supplier-flow/add",
+                json={
+                    "provider": provider,
+                    "supplier_sku": "OLD-1",
+                    "name": "Legacy marketplace product",
+                    "price": 5.0,
+                    "currency": "USD",
+                },
+            )
+            assert response.status_code == 410
+
+
+def test_source_search_schema_allows_only_cj():
+    with TestClient(app) as client:
+        amazon = client.get("/api/suppliers/source-search", params={"provider": "amazon", "q": "fan"})
+        ali = client.get("/api/suppliers/source-search", params={"provider": "aliexpress", "q": "fan"})
+    assert amazon.status_code == 422
+    assert ali.status_code == 422
+
+
+def test_dormant_marketplace_code_is_not_loaded_by_application_shell():
+    main = read("app/main.py").lower()
+    worker = read("app/static/service-worker.js").lower()
+    workflow = read("app/static/workflow_cleanup.js").lower()
+
+    assert "aliexpress_dropship_search" not in main
+    assert "marketplace_supplier_sources" not in main
+    assert "amazon" not in worker
+    assert "aliexpress" not in worker
+    assert "cj dropshipping" in workflow
+    assert "ebay us" in workflow

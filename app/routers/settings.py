@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.services.cj_landed import route_requirements
 from app.services.ebay import EbayClient
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
@@ -21,8 +22,8 @@ def _read_env() -> dict[str, str]:
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        k, v = line.split("=", 1)
-        out[k.strip()] = v.strip().strip('"').strip("'")
+        key, value = line.split("=", 1)
+        out[key.strip()] = value.strip().strip('"').strip("'")
     return out
 
 
@@ -32,19 +33,22 @@ def _write_env(updates: dict[str, str]) -> None:
     preferred = [
         "APP_BASE_URL", "APP_ENCRYPTION_KEY", "DEMO_MODE", "EBAY_ENV", "EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET",
         "EBAY_RUNAME", "EBAY_MARKETPLACE_ID", "EBAY_CURRENCY", "EBAY_WRITE_ENABLED", "EBAY_PUBLISH_ENABLED",
-        "DEFAULT_EBAY_FEE_PERCENT", "DEFAULT_AD_RATE_PERCENT", "DEFAULT_FIXED_FEE",
-        "DEFAULT_RETURN_RESERVE_PERCENT", "MIN_MARGIN_PERCENT", "MIN_PROFIT_EUR", "MIN_STOCK",
-        "MAX_SHIPPING_DAYS", "MAX_SUPPLIER_PRICE_JUMP_PERCENT",
+        "EBAY_CJ_US_LOCATION_KEY", "EBAY_CJ_CN_LOCATION_KEY",
+        "DEFAULT_EBAY_FEE_PERCENT", "DEFAULT_AD_RATE_PERCENT", "EBAY_LOW_ORDER_FEE", "EBAY_STANDARD_ORDER_FEE",
+        "DEFAULT_RETURN_RESERVE_PERCENT", "MIN_MARGIN_PERCENT", "MIN_PROFIT_EUR", "MIN_STOCK", "MAX_SHIPPING_DAYS",
+        "CJ_US_MIN_MARGIN_PERCENT", "CJ_US_MIN_PROFIT_USD", "CJ_US_MIN_STOCK", "CJ_US_MAX_SHIPPING_DAYS",
+        "CJ_CN_MIN_MARGIN_PERCENT", "CJ_CN_MIN_PROFIT_USD", "CJ_CN_MIN_STOCK", "CJ_CN_MAX_SHIPPING_DAYS",
+        "MAX_SUPPLIER_PRICE_JUMP_PERCENT",
     ]
-    keys = preferred + sorted(k for k in data if k not in preferred)
+    keys = preferred + sorted(key for key in data if key not in preferred)
     ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ENV_PATH.write_text("\n".join(f"{k}={data[k]}" for k in keys if k in data) + "\n", encoding="utf-8")
+    ENV_PATH.write_text("\n".join(f"{key}={data[key]}" for key in keys if key in data) + "\n", encoding="utf-8")
     try:
         ENV_PATH.chmod(0o600)
     except OSError:
         pass
-    for k, v in updates.items():
-        os.environ[k] = v
+    for key, value in updates.items():
+        os.environ[key] = value
     get_settings.cache_clear()
     EbayClient._app_token_cache = None
     EbayClient._app_token_expires = None
@@ -72,8 +76,8 @@ class EbaySettingsIn(BaseModel):
     client_secret: str | None = None
     runame: str | None = None
     environment: Literal["sandbox", "production"] = "sandbox"
-    marketplace_id: str = "EBAY_FR"
-    currency: str = "EUR"
+    marketplace_id: str = "EBAY_US"
+    currency: str = "USD"
 
 
 class RiskSettingsIn(BaseModel):
@@ -82,6 +86,7 @@ class RiskSettingsIn(BaseModel):
     fixed_fee: float = Field(ge=0, le=50)
     return_reserve_percent: float = Field(ge=0, le=50)
     min_margin_percent: float = Field(ge=0, le=100)
+    # Legacy field name kept because the current form posts it; value is USD in v0.23.
     min_profit_eur: float = Field(ge=0)
     min_stock: int = Field(ge=0)
     max_shipping_days: int = Field(ge=0, le=90)
@@ -90,24 +95,26 @@ class RiskSettingsIn(BaseModel):
 
 @router.get("/ebay")
 def ebay_settings():
-    s = get_settings()
+    settings = get_settings()
     missing = []
-    if not s.ebay_client_id:
+    if not settings.ebay_client_id:
         missing.append("Client ID")
-    if not s.ebay_client_secret:
+    if not settings.ebay_client_secret:
         missing.append("Client Secret")
-    if not s.ebay_runame:
+    if not settings.ebay_runame:
         missing.append("RuName")
     return {
         "configured": not missing,
         "missing": missing,
-        "environment": s.ebay_effective_env,
-        "marketplace_id": s.ebay_marketplace_id,
-        "currency": s.ebay_currency,
-        "client_id_masked": _masked(s.ebay_client_id),
-        "runame_masked": _masked(s.ebay_runame),
-        "has_client_secret": bool(s.ebay_client_secret),
+        "environment": settings.ebay_effective_env,
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
+        "locale": "en-US",
+        "client_id_masked": _masked(settings.ebay_client_id),
+        "runame_masked": _masked(settings.ebay_runame),
+        "has_client_secret": bool(settings.ebay_client_secret),
         "connected": EbayClient().token_status().get("connected", False),
+        "operating_mode": "EBAY_US_CJ_ONLY",
     }
 
 
@@ -115,8 +122,6 @@ def ebay_settings():
 def save_ebay_settings(payload: EbaySettingsIn):
     current = _read_env()
     encryption_key = current.get("APP_ENCRYPTION_KEY") or os.getenv("APP_ENCRYPTION_KEY") or Fernet.generate_key().decode()
-
-    # Empty fields mean "keep the existing credential" so editing marketplace/currency never destroys keys.
     client_id = (payload.client_id or "").strip() or current.get("EBAY_CLIENT_ID", "")
     client_secret = (payload.client_secret or "").strip() or current.get("EBAY_CLIENT_SECRET", "")
     runame = (payload.runame or "").strip() or current.get("EBAY_RUNAME", "")
@@ -128,8 +133,8 @@ def save_ebay_settings(payload: EbaySettingsIn):
         "EBAY_CLIENT_SECRET": client_secret,
         "EBAY_RUNAME": runame,
         "EBAY_ENV": environment,
-        "EBAY_MARKETPLACE_ID": payload.marketplace_id.strip() or "EBAY_FR",
-        "EBAY_CURRENCY": payload.currency.strip().upper() or "EUR",
+        "EBAY_MARKETPLACE_ID": "EBAY_US",
+        "EBAY_CURRENCY": "USD",
         "DEMO_MODE": "true",
         "EBAY_WRITE_ENABLED": "false",
         "EBAY_PUBLISH_ENABLED": "false",
@@ -139,26 +144,28 @@ def save_ebay_settings(payload: EbaySettingsIn):
         "saved": True,
         "configured": configured,
         "environment": environment,
-        "message": (
-            f"Configuration eBay {environment} sauvegardée dans l'espace privé. "
-            "Les écritures et publications restent verrouillées."
-        ),
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
+        "message": f"Configuration eBay US {environment} sauvegardée. Les écritures et publications restent verrouillées.",
     }
 
 
 @router.get("/risk")
 def get_risk_settings():
-    s = get_settings()
+    settings = get_settings()
     return {
-        "ebay_fee_percent": s.default_ebay_fee_percent,
-        "ad_rate_percent": s.default_ad_rate_percent,
-        "fixed_fee": s.default_fixed_fee,
-        "return_reserve_percent": s.default_return_reserve_percent,
-        "min_margin_percent": s.min_margin_percent,
-        "min_profit_eur": s.min_profit_eur,
-        "min_stock": s.min_stock,
-        "max_shipping_days": s.max_shipping_days,
-        "max_supplier_price_jump_percent": s.max_supplier_price_jump_percent,
+        "ebay_fee_percent": settings.default_ebay_fee_percent,
+        "ad_rate_percent": settings.default_ad_rate_percent,
+        "fixed_fee": settings.ebay_standard_order_fee,
+        "return_reserve_percent": settings.default_return_reserve_percent,
+        "min_margin_percent": settings.min_margin_percent,
+        "min_profit_eur": settings.min_profit_amount,
+        "min_stock": settings.min_stock,
+        "max_shipping_days": settings.max_shipping_days,
+        "max_supplier_price_jump_percent": settings.max_supplier_price_jump_percent,
+        "currency": "USD",
+        "us_route": route_requirements("US"),
+        "cn_route": route_requirements("CN"),
     }
 
 
@@ -168,6 +175,7 @@ def save_risk_settings(payload: RiskSettingsIn):
         "DEFAULT_EBAY_FEE_PERCENT": str(payload.ebay_fee_percent),
         "DEFAULT_AD_RATE_PERCENT": str(payload.ad_rate_percent),
         "DEFAULT_FIXED_FEE": str(payload.fixed_fee),
+        "EBAY_STANDARD_ORDER_FEE": str(payload.fixed_fee),
         "DEFAULT_RETURN_RESERVE_PERCENT": str(payload.return_reserve_percent),
         "MIN_MARGIN_PERCENT": str(payload.min_margin_percent),
         "MIN_PROFIT_EUR": str(payload.min_profit_eur),
@@ -175,5 +183,4 @@ def save_risk_settings(payload: RiskSettingsIn):
         "MAX_SHIPPING_DAYS": str(payload.max_shipping_days),
         "MAX_SUPPLIER_PRICE_JUMP_PERCENT": str(payload.max_supplier_price_jump_percent),
     })
-    return {"saved": True, "message": "Règles de marge et de risque mises à jour.",
-            "applied": get_risk_settings()}
+    return {"saved": True, "message": "Règles générales eBay US mises à jour.", "applied": get_risk_settings()}

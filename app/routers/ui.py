@@ -12,42 +12,50 @@ from app.services.diagnostics import build_safe_diagnostic
 from app.services.risk import assess_product
 
 router = APIRouter(prefix="/api/ui", tags=["UI"])
+VERSION = "0.23.0"
+
+
+def _active_products() -> list[dict]:
+    return [
+        row for row in list_products()
+        if row.get("marketplace_id") == "EBAY_US" and row.get("currency") == "USD"
+    ]
 
 
 @router.get("/summary")
 def summary():
-    s = get_settings()
-    products = list_products()
-    risks = [assess_product(p) for p in products]
+    settings = get_settings()
+    products = _active_products()
+    risks = [assess_product(product) for product in products]
     listings = list_listings()
-    statuses = Counter((x.get("status") or "DRAFT") for x in listings)
+    statuses = Counter((row.get("status") or "DRAFT") for row in listings)
     oauth = EbayClient().token_status()
 
-    credentials_configured = bool(s.ebay_client_id and s.ebay_client_secret and s.ebay_runame)
+    credentials_configured = bool(settings.ebay_client_id and settings.ebay_client_secret and settings.ebay_runame)
     connected = bool(oauth.get("connected"))
     setup_steps = [
-        {"key": "app", "label": "Bot installé", "done": True},
-        {"key": "catalog", "label": "Catalogue fournisseur", "done": len(products) > 0},
-        {"key": "keys", "label": "Clés eBay Developer", "done": credentials_configured},
+        {"key": "profile", "label": "Mode eBay US / CJ actif", "done": True},
+        {"key": "catalog", "label": "Au moins un produit CJ US", "done": len(products) > 0},
+        {"key": "keys", "label": "Clés eBay Production", "done": credentials_configured},
         {"key": "oauth", "label": "Compte eBay connecté", "done": connected},
-        {"key": "sandbox", "label": "Tests Sandbox", "done": connected and s.ebay_env == "sandbox"},
     ]
 
     return {
-        "version": "0.14.3",
+        "version": VERSION,
         "products": len(products),
-        "risk_pass": sum(1 for r in risks if r.get("pass")),
-        "risk_block": sum(1 for r in risks if not r.get("pass")),
+        "risk_pass": sum(1 for risk in risks if risk.get("pass")),
+        "risk_block": sum(1 for risk in risks if not risk.get("pass")),
         "listings": len(listings),
         "listing_statuses": dict(statuses),
         "connected": connected,
         "credentials_configured": credentials_configured,
-        "environment": s.ebay_env,
-        "marketplace": s.ebay_marketplace_id,
-        "currency": s.ebay_currency,
-        "demo_mode": s.demo_mode,
-        "write_enabled": s.ebay_write_enabled,
-        "publish_enabled": s.ebay_publish_enabled,
+        "environment": settings.ebay_effective_env,
+        "marketplace": "EBAY_US",
+        "currency": "USD",
+        "demo_mode": settings.demo_mode,
+        "write_enabled": settings.ebay_write_enabled,
+        "publish_enabled": settings.ebay_publish_enabled,
+        "operating_mode": "EBAY_US_CJ_ONLY",
         "setup_steps": setup_steps,
     }
 
@@ -59,20 +67,23 @@ def listings():
 
 @router.get("/system")
 def system_status():
-    s = get_settings()
-    db_path = Path(s.database_path).resolve()
+    settings = get_settings()
+    db_path = Path(settings.database_path).resolve()
     return {
-        "version": "0.14.3",
+        "version": VERSION,
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "database": str(db_path),
         "database_exists": db_path.exists(),
         "database_parent_writable": db_path.parent.exists(),
-        "mode": "cloud" if s.cloud_mode else "local",
-        "environment": s.ebay_env,
-        "demo_mode": s.demo_mode,
-        "write_enabled": s.ebay_write_enabled,
-        "publish_enabled": s.ebay_publish_enabled,
+        "mode": "cloud" if settings.cloud_mode else "local",
+        "environment": settings.ebay_effective_env,
+        "marketplace": "EBAY_US",
+        "currency": "USD",
+        "operating_mode": "EBAY_US_CJ_ONLY",
+        "demo_mode": settings.demo_mode,
+        "write_enabled": settings.ebay_write_enabled,
+        "publish_enabled": settings.ebay_publish_enabled,
     }
 
 
