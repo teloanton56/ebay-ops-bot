@@ -18,7 +18,7 @@ def test_radar_accepts_production_app_id_even_if_saved_env_is_stale(monkeypatch)
     assert get_settings().ebay_effective_env == "production"
     assert ebay["configured"] is True
     assert ebay["ready"] is True
-    assert ebay["status"] == "Prêt"
+    assert ebay["status"] == "Ready"
     get_settings.cache_clear()
 
 
@@ -28,4 +28,6 @@ def test_research_guard_uses_effective_production_environment(monkeypatch):
     settings = _require_real_market()
 
     assert settings.ebay_effective_env == "production"
+    assert settings.ebay_marketplace_id == "EBAY_US"
+    assert settings.ebay_currency == "USD"
     get_settings.cache_clear()
