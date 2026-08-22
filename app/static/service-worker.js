@@ -1,19 +1,15 @@
-const SHELL = 'opsbot-v0.22.0-shell';
+const SHELL = 'opsbot-v0.23.0-shell';
 const ASSETS = [
-  '/static/app.css?v=0.22.0',
-  '/static/app.js?v=0.22.0',
-  '/static/provider_cleanup.js?v=0.22.0',
-  '/static/workflow_cleanup.js?v=0.22.0',
-  '/static/product_research.css?v=0.22.0',
-  '/static/product_research.js?v=0.22.0',
-  '/static/auto_radar.css?v=0.22.0',
-  '/static/auto_radar.js?v=0.22.0',
-  '/static/tiered_radar.css?v=0.22.0',
-  '/static/tiered_radar.js?v=0.22.0',
-  '/static/supplier_flow_v2.js?v=0.22.0',
-  '/static/margin_hunter.js?v=0.22.0',
-  '/static/shop_spy.js?v=0.22.0',
-  '/static/catalog_sync.js?v=0.22.0',
+  '/static/app.css?v=0.23.0',
+  '/static/app.js?v=0.23.0',
+  '/static/provider_cleanup.js?v=0.23.0',
+  '/static/workflow_cleanup.js?v=0.23.0',
+  '/static/product_research.css?v=0.23.0',
+  '/static/product_research.js?v=0.23.0',
+  '/static/supplier_flow_v2.js?v=0.23.0',
+  '/static/margin_hunter.js?v=0.23.0',
+  '/static/shop_spy.js?v=0.23.0',
+  '/static/catalog_sync.js?v=0.23.0',
   '/static/app-icon.svg',
   '/offline'
 ];
@@ -51,17 +47,4 @@ self.addEventListener('fetch', event => {
         .catch(() => caches.match(request))
     );
   }
-});
-
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  const target = new URL(event.notification.data?.url || '/#radar', self.location.origin).href;
-  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
-    const existing = clients.find(client => new URL(client.url).origin === self.location.origin);
-    if (existing) {
-      existing.navigate(target);
-      return existing.focus();
-    }
-    return self.clients.openWindow(target);
-  }));
 });
