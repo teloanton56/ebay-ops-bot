@@ -22,6 +22,7 @@ from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
 VERSION = "0.23.1"
+BRAND_REV = "ops-knot-1"
 
 
 @asynccontextmanager
@@ -128,8 +129,16 @@ def dashboard(request: Request):
         '<option value="production">Production</option>',
     )
     html = html.replace(
+        "/static/app-icon.svg",
+        f"/static/app-icon.svg?v={BRAND_REV}",
+    )
+    html = html.replace(
         "</head>",
-        f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n</head>',
+        (
+            f'<link rel="stylesheet" href="/static/product_research.css?v={VERSION}">\n'
+            f'<link rel="stylesheet" href="/static/brand.css?v={BRAND_REV}">\n'
+            "</head>"
+        ),
     )
     html = html.replace(
         "</body>",
