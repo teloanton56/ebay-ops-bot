@@ -19,101 +19,87 @@ def test_extract_seller_username_from_raw_and_store_urls():
     assert ebay_shop_spy.extract_seller_username(exact) == "style_discount"
 
 
-def test_shop_analysis_uses_finding_seller_filter_without_keyword(monkeypatch):
+def test_shop_analysis_uses_current_browse_seller_filter_with_root_category(monkeypatch):
     monkeypatch.setattr(
         ebay_shop_spy,
         "get_settings",
         lambda: SimpleNamespace(
             ebay_effective_env="production",
             ebay_client_id="client-app-id",
+            ebay_client_secret="client-secret",
         ),
     )
 
-    payload = {
-        "findItemsAdvancedResponse": [{
-            "ack": ["Success"],
-            "paginationOutput": [{"totalEntries": ["2"], "totalPages": ["1"]}],
-            "searchResult": [{
-                "@count": "2",
-                "item": [
-                    {
-                        "itemId": ["1"],
-                        "title": ["Mini camera WiFi"],
-                        "galleryURL": ["https://example.test/camera.jpg"],
-                        "viewItemURL": ["https://www.ebay.fr/itm/1"],
-                        "country": ["FR"],
-                        "location": ["Faremoutiers"],
-                        "condition": [{"conditionDisplayName": ["Neuf"]}],
-                        "listingInfo": [{"startTime": ["2026-01-01T00:00:00.000Z"]}],
-                        "sellingStatus": [{"currentPrice": [{"@currencyId": "EUR", "__value__": "10.99"}]}],
-                        "shippingInfo": [{"shippingServiceCost": [{"@currencyId": "EUR", "__value__": "0.00"}]}],
-                        "sellerInfo": [{
-                            "sellerUserName": ["style_discount"],
-                            "feedbackScore": ["19000"],
-                            "positiveFeedbackPercent": ["99.9"],
-                        }],
+    async def fake_public_request(self, method, path, *, params=None, marketplace_id=None):
+        assert method == "GET"
+        assert path == "/buy/browse/v1/item_summary/search"
+        assert marketplace_id == "EBAY_FR"
+        assert params["category_ids"] == "0"
+        assert params["filter"] == "sellers:{style_discount},buyingOptions:{AUCTION|FIXED_PRICE|BEST_OFFER}"
+        assert params["limit"] == 50
+        assert params["offset"] == 0
+        assert params["fieldgroups"] == "EXTENDED"
+        assert "q" not in params
+        assert "keywords" not in params
+        return {
+            "total": 2,
+            "itemSummaries": [
+                {
+                    "itemId": "v1|1|0",
+                    "legacyItemId": "1",
+                    "title": "Mini camera WiFi",
+                    "price": {"value": "10.99", "currency": "EUR"},
+                    "shippingOptions": [{"shippingCost": {"value": "0.00", "currency": "EUR"}}],
+                    "seller": {
+                        "username": "style_discount",
+                        "feedbackScore": 19000,
+                        "feedbackPercentage": "99.9",
+                        "sellerAccountType": "BUSINESS",
                     },
-                    {
-                        "itemId": ["2"],
-                        "title": ["Mini camera WiFi 2"],
-                        "galleryURL": ["https://example.test/camera2.jpg"],
-                        "viewItemURL": ["https://www.ebay.fr/itm/2"],
-                        "country": ["FR"],
-                        "sellingStatus": [{"currentPrice": [{"@currencyId": "EUR", "__value__": "14.99"}]}],
-                        "shippingInfo": [{"shippingServiceCost": [{"@currencyId": "EUR", "__value__": "0.00"}]}],
-                        "sellerInfo": [{"sellerUserName": ["style_discount"]}],
-                    },
-                ],
-            }],
-        }]
-    }
+                    "image": {"imageUrl": "https://example.test/camera.jpg"},
+                    "itemWebUrl": "https://www.ebay.fr/itm/1",
+                    "itemLocation": {"country": "FR", "city": "Faremoutiers"},
+                    "condition": "Neuf",
+                },
+                {
+                    "itemId": "v1|2|0",
+                    "legacyItemId": "2",
+                    "title": "Mini camera WiFi 2",
+                    "price": {"value": "14.99", "currency": "EUR"},
+                    "watchCount": 17,
+                    "seller": {"username": "style_discount"},
+                    "image": {"imageUrl": "https://example.test/camera2.jpg"},
+                    "itemWebUrl": "https://www.ebay.fr/itm/2",
+                    "itemLocation": {"country": "FR"},
+                },
+            ],
+        }
 
-    class FakeResponse:
-        status_code = 200
-        is_error = False
-
-        def json(self):
-            return payload
-
-    class FakeAsyncClient:
-        def __init__(self, *args, **kwargs):
-            assert kwargs.get("timeout") == 45
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get(self, url, *, params=None):
-            assert url == ebay_shop_spy.FINDING_ENDPOINT
-            assert params["OPERATION-NAME"] == "findItemsAdvanced"
-            assert params["SECURITY-APPNAME"] == "client-app-id"
-            assert params["GLOBAL-ID"] == "EBAY-FR"
-            assert params["itemFilter(0).name"] == "Seller"
-            assert params["itemFilter(0).value(0)"] == "style_discount"
-            assert params["itemFilter(1).name"] == "LocatedIn"
-            assert params["itemFilter(1).value(0)"] == "WorldWide"
-            assert params["paginationInput.entriesPerPage"] == "50"
-            assert "q" not in params
-            assert "keywords" not in params
-            assert "category_ids" not in params
-            return FakeResponse()
-
-    monkeypatch.setattr(ebay_shop_spy.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(ebay_shop_spy.EbayClient, "public_request", fake_public_request)
     data = asyncio.run(ebay_shop_spy.analyze_ebay_shop("style_discount", limit=50))
     assert data["active_listings_total"] == 2
     assert data["sample_size"] == 2
     assert data["median_price"] == 12.99
-    assert data["watchers_available"] is False
+    assert data["watchers_available"] is True
     assert data["seller"]["username"] == "style_discount"
     assert data["seller"]["feedback_score"] == 19000
     assert data["seller"]["feedback_percent"] == 99.9
     assert data["listings"][0]["buyer_total"] == 10.99
     assert data["listings"][0]["shipping_cost"] == 0.0
     assert "sales" not in data["listings"][0]
-    assert "findItemsAdvanced" in data["note"]
+    assert "Browse" in data["note"]
+    assert "Finding" not in data["note"]
     assert "volume de ventes par annonce" in data["note"]
+
+
+def test_shop_spy_source_has_no_decommissioned_finding_dependency():
+    source = (ROOT / "app/services/ebay_shop_spy.py").read_text(encoding="utf-8")
+    assert "svcs.ebay.com" not in source
+    assert "findItemsAdvanced" not in source
+    assert 'BROWSE_ROOT_CATEGORY = "0"' in source
+    assert '"/buy/browse/v1/item_summary/search"' in source
+    assert "buyingOptions:" in source
+    assert "AUCTION|FIXED_PRICE|BEST_OFFER" in source
 
 
 def test_shop_spy_frontend_has_real_tab_compare_and_add_flow():
