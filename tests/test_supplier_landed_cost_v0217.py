@@ -8,14 +8,26 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_supplier_flow_keeps_cj_product_id_and_calculates_real_freight():
-    source = read("app/routers/supplier_flow.py")
-    assert "cj_pid" in source
-    assert "client.product_detail(payload.cj_pid)" in source
-    assert "client.freight_options" in source
-    assert "client.usd_to_eur" in source
-    assert '"shipping_cost": shipping_eur' in source
-    assert '"target_price": pricing["suggested_price"]' in source
+def test_supplier_flow_keeps_cj_product_id_and_uses_shared_real_freight_engine():
+    flow = read("app/routers/supplier_flow.py")
+    landed = read("app/services/cj_landed.py")
+    assert "cj_pid" in flow
+    assert "resolve_cj_landed_offer" in flow
+    assert "save_cj_product_link" in flow
+    assert "client.product_detail(pid)" in landed
+    assert "client.freight_options" in landed
+    assert "client.usd_to_eur" in landed
+    assert '"shipping_cost": landed["shipping_cost"]' in flow
+    assert '"target_price": pricing["suggested_price"]' in flow
+
+
+def test_margin_hunter_and_supplier_add_share_same_cj_landed_resolver():
+    flow = read("app/routers/supplier_flow.py")
+    hunter = read("app/services/margin_hunter.py")
+    assert "resolve_cj_landed_offer" in flow
+    assert "resolve_cj_landed_offer" in hunter
+    assert "def _choose_freight" not in hunter
+    assert "def _source_country" not in hunter
 
 
 def test_unknown_marketplace_logistics_are_not_marked_as_free_shipping():

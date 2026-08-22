@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from typing import Any
 
 from app.config import get_settings
 from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier_offers
 from app.services.cj import CJClient, CJError
+from app.services.cj_landed import resolve_cj_landed_offer
 from app.services.connections import connection_status
 from app.services.marketplace_supplier_sources import aliexpress_connection_status
 from app.services.product_research import build_product_research_summary
@@ -24,11 +24,6 @@ MAX_RESULTS = 10
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
     return max(low, min(float(value), high))
-
-
-def _delivery_days(value: Any) -> int | None:
-    values = [int(item) for item in re.findall(r"\d+", str(value or ""))]
-    return max(values) if values else None
 
 
 def _competition_points(listings: int) -> float:
@@ -99,34 +94,6 @@ def _market_context(ebay: dict[str, Any], amazon: dict[str, Any] | None) -> dict
     }
 
 
-def _choose_freight(options: list[dict[str, Any]], max_days: int) -> dict[str, Any] | None:
-    usable = []
-    for row in options:
-        try:
-            price = float(row.get("price_usd") or 0)
-        except (TypeError, ValueError):
-            continue
-        if price < 0:
-            continue
-        days = _delivery_days(row.get("delivery_days"))
-        usable.append((row, price, days))
-    if not usable:
-        return None
-    fast = [item for item in usable if item[2] is not None and item[2] <= max_days]
-    pool = fast or usable
-    selected, _, _ = min(pool, key=lambda item: (item[1], item[2] if item[2] is not None else 999))
-    return selected
-
-
-def _source_country(variant: dict[str, Any]) -> str:
-    inventories = [row for row in variant.get("inventories") or [] if int(row.get("stock") or 0) > 0]
-    preferred = ("FR", "DE", "ES", "IT", "PL", "NL", "BE", "CZ", "CN")
-    for country in preferred:
-        if any(str(row.get("country_code") or "").upper() == country for row in inventories):
-            return country
-    return str(next((row.get("country_code") for row in inventories if row.get("country_code")), "CN")).upper()
-
-
 async def _deep_cj_candidate(
     client: CJClient,
     product: dict[str, Any],
@@ -142,28 +109,23 @@ async def _deep_cj_candidate(
             pid = str(product.get("cj_pid") or "").strip()
             if not pid:
                 return None, "CJ : identifiant produit manquant"
-            detail = await client.product_detail(pid)
-            variants = [row for row in detail.get("variants") or [] if float(row.get("price_usd") or 0) > 0]
-            if not variants:
-                return None, f"CJ {pid} : aucune variante exploitable"
-            stocked = [row for row in variants if int(row.get("stock") or 0) > 0]
-            variant = min(stocked or variants, key=lambda row: (float(row.get("price_usd") or 0), -int(row.get("stock") or 0)))
-            country = _source_country(variant)
-            freight = await client.freight_options(variant["vid"], start_country=country, destination_country="FR")
-            chosen = _choose_freight(freight, settings.max_shipping_days)
-            if not chosen:
-                return None, f"CJ {pid} : aucun transport France exploitable"
-
-            supplier_cost = round(float(variant.get("price_usd") or product.get("price_usd") or 0) * exchange_rate, 2)
-            shipping_cost = round(float(chosen.get("price_usd") or 0) * exchange_rate, 2)
-            landed_cost = round(supplier_cost + shipping_cost, 2)
+            landed = await resolve_cj_landed_offer(
+                client,
+                pid,
+                fallback_price_usd=float(product.get("price_usd") or 0),
+                max_shipping_days=settings.max_shipping_days,
+                exchange_rate=exchange_rate,
+            )
+            supplier_cost = float(landed["supplier_cost"])
+            shipping_cost = float(landed["shipping_cost"])
+            landed_cost = float(landed["landed_cost"])
             if reference_price <= 0:
                 return None, "Prix eBay de référence indisponible"
             cost_ratio = round(landed_cost / reference_price * 100.0, 1)
             profit = calculate_profit({"supplier_cost": supplier_cost, "shipping_cost": shipping_cost}, reference_price)
             margin_percent = profit.get("margin_percent")
             estimated_profit = profit.get("estimated_profit")
-            days = _delivery_days(chosen.get("delivery_days"))
+            days = int(landed["shipping_days"])
             relevance = float(product.get("match_strength") or 0)
 
             score = (
@@ -181,14 +143,13 @@ async def _deep_cj_candidate(
                 and float(margin_percent) >= settings.min_margin_percent
                 and estimated_profit is not None
                 and float(estimated_profit) >= settings.min_profit_eur
-                and days is not None
                 and days <= settings.max_shipping_days
             )
             if goal_hit and score >= 70:
                 verdict = "PRIORITÉ"
             elif margin_percent is not None and float(margin_percent) >= settings.min_margin_percent and cost_ratio <= 40:
                 verdict = "À TESTER"
-            elif days is not None and days > settings.max_shipping_days:
+            elif days > settings.max_shipping_days:
                 verdict = "LIVRAISON LENTE"
             else:
                 verdict = "À CREUSER"
@@ -203,10 +164,10 @@ async def _deep_cj_candidate(
                 "supplier_sku": str(product.get("sku") or pid),
                 "cj_pid": pid,
                 "name": product.get("name") or "Produit CJ",
-                "image_url": variant.get("image_url") or product.get("image_url") or "",
+                "image_url": landed.get("image_url") or product.get("image_url") or "",
                 "source_url": "",
-                "stock": int(variant.get("stock") or product.get("stock") or 0),
-                "warehouse": country,
+                "stock": int(landed.get("stock") or 0),
+                "warehouse": landed.get("warehouse") or "",
                 "supplier_cost": supplier_cost,
                 "shipping_cost": shipping_cost,
                 "landed_cost": landed_cost,
@@ -221,7 +182,7 @@ async def _deep_cj_candidate(
                 "shipping_budget_to_30": round(max(reference_price * TARGET_LANDED_RATIO / 100.0 - supplier_cost, 0), 2),
                 "quality_evidence": [
                     f"Coût livré France calculé : {landed_cost:.2f} EUR",
-                    f"Transport {chosen.get('name') or 'CJ'} depuis {country}",
+                    f"Transport {landed.get('freight_name') or 'CJ'} depuis {landed.get('warehouse') or 'CJ'}",
                     f"Prix eBay médian observé : {reference_price:.2f} EUR",
                 ],
                 "add_payload": {
@@ -430,7 +391,8 @@ async def hunt_margin_opportunities(keyword: str, *, limit: int = MAX_RESULTS) -
         "goal_hits": sum(1 for row in selected if row.get("goal_hit")),
         "errors": errors,
         "note": (
-            "CJ est scoré avec coût livré France réel. AliExpress reste préliminaire tant que le transport n'est pas confirmé. "
-            "Le prix eBay utilisé est la médiane des annonces actives observées, pas un prix de vente garanti."
+            "CJ est scoré avec le même moteur de coût livré France que l'ajout catalogue et la revalidation pré-publication. "
+            "AliExpress reste préliminaire tant que le transport n'est pas confirmé. Le prix eBay utilisé est la médiane "
+            "des annonces actives observées, pas un prix de vente garanti."
         ),
     }

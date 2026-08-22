@@ -1,11 +1,11 @@
 import asyncio
-import re
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.aliexpress_dropship_search import aliexpress_dropship_supplier_offers
 from app.services.cj import CJClient, CJError
+from app.services.cj_landed import resolve_cj_landed_offer, save_cj_product_link
 from app.services.db import list_suppliers, save_supplier, upsert_product
 from app.services.marketplace_supplier_sources import amazon_supplier_offers
 from app.services.profit import suggest_price
@@ -71,8 +71,6 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
         if not client.status().get("connected"):
             return None, [{"source": "CJ", "message": "CJ n'est pas connecté"}]
 
-        # CJ listV2 can return related/recommended products around a query. Pull a wider
-        # candidate set, then keep only titles that genuinely match the user's search.
         result = await client.search_products(keyword=keyword, size=50, min_stock=3, order_by=0)
         raw_products = result.get("products") or []
         relevant, rejected = rank_supplier_results(keyword, raw_products, title_keys=("name",), limit=20)
@@ -99,7 +97,7 @@ async def _cj_group(keyword: str) -> tuple[dict | None, list[dict]]:
                     f"Pertinence recherche : {float(product.get('match_strength') or 0) * 100:.0f}%",
                     f"Stock observé : {product.get('stock', 0)}",
                     f"Présence CJ : {product.get('listed_num', 0)} listings",
-                    "Transport France calculé au moment de l'ajout",
+                    "Transport France calculé au moment de l'ajout avec le même moteur que Margin Hunter",
                 ],
             })
         return {
@@ -187,77 +185,56 @@ def _supplier_for(provider: str) -> int:
     }))
 
 
-def _delivery_days(value: object) -> int:
-    numbers = [int(item) for item in re.findall(r"\d+", str(value or ""))]
-    return max(numbers, default=0)
-
-
 async def _add_cj_offer(payload: OfferIn, supplier_id: int, sku: str) -> dict:
     if not payload.cj_pid:
         raise HTTPException(400, "Identifiant produit CJ manquant. Relancez la recherche fournisseur avant l'ajout.")
 
     client = CJClient()
     try:
-        detail = await client.product_detail(payload.cj_pid)
-        variants = [row for row in detail.get("variants") or [] if float(row.get("price_usd") or 0) > 0]
-        if not variants:
-            raise CJError("CJ ne retourne aucune variante exploitable pour ce produit")
-
-        stocked = [row for row in variants if int(row.get("stock") or 0) > 0]
-        variant = min(stocked or variants, key=lambda row: (float(row.get("price_usd") or 0), str(row.get("name") or "")))
-        inventories = [row for row in variant.get("inventories") or [] if int(row.get("stock") or 0) > 0]
-        source_country = next((row.get("country_code") for row in inventories if row.get("country_code") == "FR"), None)
-        source_country = source_country or next((row.get("country_code") for row in inventories if row.get("country_code") == "CN"), None)
-        source_country = source_country or next((row.get("country_code") for row in inventories if row.get("country_code")), "CN")
-
-        freight = await client.freight_options(
-            variant["vid"],
-            start_country=source_country,
-            destination_country="FR",
+        landed = await resolve_cj_landed_offer(
+            client,
+            payload.cj_pid,
+            fallback_price_usd=payload.price,
         )
-        if not freight:
-            raise CJError("CJ ne propose aucun transport vers la France pour cette variante")
-
-        chosen = freight[0]
-        exchange = await client.usd_to_eur()
-        supplier_eur = round(float(variant.get("price_usd") or payload.price) * exchange["rate"], 2)
-        shipping_eur = round(float(chosen.get("price_usd") or 0) * exchange["rate"], 2)
-        pricing = suggest_price({"supplier_cost": supplier_eur, "shipping_cost": shipping_eur})
-        days = _delivery_days(chosen.get("delivery_days"))
-        if days <= 0:
-            raise CJError("CJ ne fournit pas de délai exploitable pour le transport sélectionné")
-
+        pricing = suggest_price({
+            "supplier_cost": landed["supplier_cost"],
+            "shipping_cost": landed["shipping_cost"],
+        })
+        image = landed.get("image_url") or payload.image_url
         product_id = upsert_product({
             "supplier_sku": sku,
             "title": payload.name,
             "description": (
-                f"Produit importé depuis CJ Dropshipping. Variante {variant.get('sku') or variant.get('vid')}. "
-                f"Transport France : {chosen.get('name') or 'CJ'} · départ {source_country}. "
-                "Données fournisseur à revérifier avant publication eBay."
+                f"Produit importé depuis CJ Dropshipping. Variante {landed.get('variant_sku') or landed.get('variant_id')}. "
+                f"Transport France : {landed.get('freight_name') or 'CJ'} · départ {landed.get('warehouse')}. "
+                "Données fournisseur revalidées avant toute écriture eBay."
             ),
-            "supplier_cost": supplier_eur,
-            "shipping_cost": shipping_eur,
-            "stock": int(variant.get("stock") or payload.stock or 0),
-            "shipping_days": days,
+            "supplier_cost": landed["supplier_cost"],
+            "shipping_cost": landed["shipping_cost"],
+            "stock": landed["stock"],
+            "shipping_days": landed["shipping_days"],
             "target_price": pricing["suggested_price"],
             "marketplace_id": "EBAY_FR",
             "currency": "EUR",
-            "images": [variant.get("image_url") or payload.image_url] if (variant.get("image_url") or payload.image_url) else [],
+            "images": [image] if image else [],
             "aspects": {},
             "supplier_id": supplier_id,
             "product_status": "À tester",
             "suggested_price": pricing["suggested_price"],
         })
+        save_cj_product_link(sku, landed)
         return {
             "created": True,
             "product_id": product_id,
             "pricing_ready": True,
-            "supplier_cost": supplier_eur,
-            "shipping_cost": shipping_eur,
-            "shipping_days": days,
+            "supplier_cost": landed["supplier_cost"],
+            "shipping_cost": landed["shipping_cost"],
+            "shipping_days": landed["shipping_days"],
             "target_price": pricing["suggested_price"],
+            "warehouse": landed["warehouse"],
+            "variant_id": landed["variant_id"],
             "message": (
-                f"Produit CJ ajouté avec transport France {shipping_eur:.2f} EUR "
+                f"Produit CJ ajouté avec coût livré France {landed['landed_cost']:.2f} EUR "
                 f"et prix conseillé {pricing['suggested_price']:.2f} EUR."
             ),
         }
