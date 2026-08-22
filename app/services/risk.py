@@ -1,12 +1,18 @@
 from app.config import get_settings
+from app.services.compliance import assess_compliance
+from app.services.db import get_supplier
 from app.services.profit import calculate_profit
 
 
-def assess_product(product: dict) -> dict:
+def assess_product(product: dict, supplier: dict | None = None) -> dict:
     s = get_settings()
     p = calculate_profit(product)
     blocks = []
     warnings = []
+
+    supplier_cost = float(product.get("supplier_cost") or 0)
+    if supplier_cost <= 0:
+        blocks.append("Coût fournisseur manquant ou nul")
 
     has_target_price = bool(product.get("target_price"))
     if not has_target_price:
@@ -28,7 +34,7 @@ def assess_product(product: dict) -> dict:
         blocks.append(f"Délai {shipping_days}j > maximum {s.max_shipping_days}j")
 
     prev = product.get("previous_supplier_cost")
-    cur = float(product.get("supplier_cost") or 0)
+    cur = supplier_cost
     if prev and float(prev) > 0:
         jump = (cur - float(prev)) / float(prev) * 100
         if jump > s.max_supplier_price_jump_percent:
@@ -43,4 +49,21 @@ def assess_product(product: dict) -> dict:
     if not product.get("aspects"):
         warnings.append("Item specifics/aspects non définis")
 
-    return {"pass": not blocks, "blocks": blocks, "warnings": warnings, "profit": p}
+    if supplier is None and product.get("supplier_id"):
+        try:
+            supplier = get_supplier(int(product["supplier_id"]))
+        except (TypeError, ValueError):
+            supplier = None
+    compliance = assess_compliance(product, supplier)
+    blocks.extend(compliance["blocks"])
+    warnings.extend(compliance["warnings"])
+
+    blocks = list(dict.fromkeys(blocks))
+    warnings = list(dict.fromkeys(warnings))
+    return {
+        "pass": not blocks,
+        "blocks": blocks,
+        "warnings": warnings,
+        "profit": p,
+        "compliance": compliance,
+    }
