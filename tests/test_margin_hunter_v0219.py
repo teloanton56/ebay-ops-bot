@@ -34,7 +34,17 @@ def test_cj_us_candidate_uses_real_us_freight_and_hits_margin_goal():
                 }],
             }
 
-        async def freight_options(self, vid, *, start_country, destination_country):
+        async def product_inventory(self, pid):
+            assert pid == "PID-1"
+            return {
+                "pid": pid,
+                "product_inventories": [{"country_code": "US", "stock": 100}],
+                "variant_inventories": {
+                    "VID-1": [{"country_code": "US", "stock": 100, "storage_ids": []}],
+                },
+            }
+
+        async def freight_options(self, vid, *, start_country, destination_country, storage_ids=None):
             assert vid == "VID-1"
             assert start_country == "US"
             assert destination_country == "US"
@@ -92,7 +102,16 @@ def test_cj_china_candidate_is_allowed_only_under_stricter_thresholds():
                 }],
             }
 
-        async def freight_options(self, vid, *, start_country, destination_country):
+        async def product_inventory(self, pid):
+            return {
+                "pid": pid,
+                "product_inventories": [{"country_code": "CN", "stock": 50}],
+                "variant_inventories": {
+                    "VID-CN": [{"country_code": "CN", "stock": 50, "storage_ids": []}],
+                },
+            }
+
+        async def freight_options(self, vid, *, start_country, destination_country, storage_ids=None):
             assert start_country == "CN"
             assert destination_country == "US"
             return [{"name": "CJ Packet", "price_usd": 4.0, "delivery_days": "8-10 Days"}]
