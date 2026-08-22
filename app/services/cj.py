@@ -144,10 +144,7 @@ class CJClient:
         }
 
     async def product_inventory(self, pid: str) -> dict:
-        """Return CJ's dedicated product/variant inventory snapshot.
-
-        CJ documents this endpoint as the source for current warehouse countries before freight calculation.
-        """
+        """Return CJ's dedicated product/variant inventory snapshot."""
         payload = await self.request("GET", "/product/stock/getInventoryByPid", params={"pid": pid})
         data = payload.get("data") or {}
         product_inventories = [
@@ -170,6 +167,20 @@ class CJClient:
             "product_inventories": product_inventories,
             "variant_inventories": variant_inventories,
         }
+
+    async def variant_inventory(self, vid: str) -> list[dict]:
+        """Fetch inventory + sub-warehouse IDs for one CJ variant when PID inventory is incomplete."""
+        payload = await self.request(
+            "GET",
+            "/product/variant/queryByVid",
+            params={"vid": vid, "features": "enable_inventory"},
+        )
+        data = payload.get("data") or {}
+        return [
+            self._normalize_inventory(row)
+            for row in (data.get("inventories") or [])
+            if str(row.get("countryCode") or "").strip()
+        ]
 
     async def product_detail(self, pid: str) -> dict:
         payload = await self.request("GET", "/product/query", params={"pid": pid})
@@ -215,19 +226,32 @@ class CJClient:
     @staticmethod
     def _freight_row(item: dict, *, tip: bool = False) -> dict | None:
         if tip:
-            price_fields = ("totalPostageFee", "wrapPostage", "discountFee", "postage")
-            raw_price = next((item.get(key) for key in price_fields if item.get(key) is not None), None)
-            if raw_price is None:
+            base_raw = item.get("wrapPostage")
+            if base_raw is None:
+                base_raw = item.get("discountFee")
+            if base_raw is None:
+                base_raw = item.get("postage")
+            quoted_total = item.get("totalPostageFee")
+            if base_raw is None and quoted_total is None:
                 return None
-            price = CJClient._number(raw_price)
+            base = CJClient._number(base_raw)
+            taxes = CJClient._number(item.get("taxesFee"))
+            clearance = CJClient._number(item.get("clearanceOperationFee"))
+            tariff = CJClient._number(item.get("tariff"))
+            total = (
+                CJClient._number(quoted_total)
+                if quoted_total is not None
+                else round(base + taxes + clearance + tariff, 2)
+            )
             option = item.get("option") or {}
             channel = item.get("channel") or {}
             return {
                 "name": option.get("enName") or channel.get("enName") or "Transport CJ",
-                "price_usd": price,
-                "base_price_usd": price,
-                "taxes_usd": CJClient._number(item.get("taxesFee")),
-                "clearance_usd": CJClient._number(item.get("clearanceOperationFee")),
+                "price_usd": total,
+                "base_price_usd": base,
+                "taxes_usd": taxes,
+                "clearance_usd": clearance,
+                "tariff_usd": tariff,
                 "delivery_days": item.get("arrivalTime") or option.get("arrivalTime") or "Non indiqué",
                 "source": "freightCalculateTip",
             }
@@ -263,7 +287,7 @@ class CJClient:
     async def freight_options_tip(self, variant: dict, detail: dict, *, start_country: str = "CN",
                                   destination_country: str = "US", postcode: str = "",
                                   storage_ids: list[str] | None = None) -> list[dict]:
-        """Fallback to CJ's more accurate freight trial endpoint when simple freight has no route."""
+        """Fallback to CJ's richer freight trial endpoint when simple freight has no route."""
         sku = str(variant.get("sku") or "").strip()
         vid = str(variant.get("vid") or "").strip()
         if not sku or not vid:
@@ -283,6 +307,7 @@ class CJClient:
             "volume": round(volume, 2),
             "productProp": properties,
             "skuList": [sku],
+            "totalGoodsAmount": round(float(variant.get("price_usd") or 0), 2),
             "freightTrialSkuList": [{
                 "skuQuantity": 1,
                 "sku": sku,
@@ -292,6 +317,12 @@ class CJClient:
                 "productPropList": properties,
             }],
         }
+        if length_cm > 0 and width_cm > 0 and height_cm > 0:
+            req.update({
+                "length": round(length_cm, 2),
+                "width": round(width_cm, 2),
+                "height": round(height_cm, 2),
+            })
         clean_storage_ids = [str(value).strip() for value in (storage_ids or []) if str(value).strip()]
         if clean_storage_ids:
             req["storageIdList"] = clean_storage_ids[:100]
