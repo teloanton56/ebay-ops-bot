@@ -48,7 +48,7 @@ def test_product_score_is_automatic_for_active_us_catalog():
     assert payload["marketplace_id"] == "EBAY_US"
     assert payload["currency"] == "USD"
     assert payload["product_score"]["score"] > 0
-    assert payload["product_score"]["source"] == "CATALOGUE_LOCAL"
+    assert payload["product_score"]["source"] == "CATALOGUE_LOCAL_US"
     assert payload["product_score"]["market_score"] is None
 
 
