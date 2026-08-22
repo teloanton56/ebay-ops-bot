@@ -4,32 +4,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_cleanup_hides_legacy_panels_instead_of_removing_them():
+def test_cleanup_keeps_required_legacy_hooks_hidden_not_active():
     source = (ROOT / "app/static/provider_cleanup.js").read_text(encoding="utf-8")
-    assert "function hideLegacyPanel" in source
-    protected = [
-        "sales-channel-panel",
-        "supplier-network",
-        "niche-directory-panel",
-        "factory-discovery-panel",
-        "radar-factory-grid",
+    assert "function hide(node)" in source
+    for marker in (
+        "#supplierKpis",
+        ".supplier-network",
+        ".niche-directory-panel",
+        ".factory-discovery-panel",
+        ".radar-factory-grid",
         "#radarSources",
-    ]
-    for marker in protected:
+        ".supplier-directory",
+    ):
         assert marker in source
-    assert "hideLegacyPanel(document.querySelector('#section-ebay .sales-channel-panel'))" in source
-    assert "hideLegacyPanel(document.querySelector('#section-suppliers .supplier-network'))" in source
-    assert "hideLegacyPanel(document.querySelector('#section-suppliers .niche-directory-panel'))" in source
-    assert "hideLegacyPanel(document.querySelector('#section-suppliers .factory-discovery-panel'))" in source
-    assert "hideLegacyPanel(document.querySelector('#section-suppliers .radar-factory-grid'))" in source
-    assert "hideLegacyPanel(document.querySelector('#section-radar #radarSources')?.closest('.panel'))" in source
+    assert "hide(section.querySelector('#supplierKpis'))" in source
+    assert "hide(section.querySelector('#radarSources')?.closest('.panel'))" in source
 
 
-def test_supplier_kpis_are_preserved_for_legacy_refreshes():
-    source = (ROOT / "app/static/workflow_cleanup.js").read_text(encoding="utf-8")
-    assert "section.querySelector('#supplierKpis')?.remove()" not in source
-    assert "supplierKpis.hidden = true" in source
-    assert "supplierKpis.dataset.legacyHidden = '1'" in source
+def test_cleanup_explicitly_retires_old_sources():
+    source = (ROOT / "app/static/provider_cleanup.js").read_text(encoding="utf-8").lower()
+    for retired in ("amazon", "aliexpress", "tiktok", "youtube", "etsy", "dropxl"):
+        assert retired in source
+    assert "removeRetiredCards" in (ROOT / "app/static/provider_cleanup.js").read_text(encoding="utf-8")
 
 
 def test_no_startup_compatibility_script_is_reintroduced():
