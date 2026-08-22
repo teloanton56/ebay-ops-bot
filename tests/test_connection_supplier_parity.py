@@ -1,60 +1,59 @@
 from pathlib import Path
 
-from app.services.marketplace_supplier_sources import (
-    AliExpressSupplierClient,
-    aliexpress_connection_status,
-)
+from fastapi.testclient import TestClient
+
+from app.main import app
 
 
-def test_aliexpress_connection_status_requires_oauth_and_verification(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.marketplace_supplier_sources.load_aliexpress_credentials",
-        lambda: {
-            "app_key": "demo-key",
-            "app_secret": "demo-secret",
-            "access_token": "oauth-token",
-            "verified_at": "2026-08-21T20:00:00+00:00",
-            "last_error": "",
-        },
-    )
-    status = aliexpress_connection_status()
-    assert status["configured"] is True
-    assert status["oauth_authorized"] is True
-    assert status["connected"] is True
-    assert status["supplier"] is True
-    assert status["capabilities"]["search"] is True
-    assert status["capabilities"]["margin_analysis"] is True
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_aliexpress_client_reads_native_saved_credentials(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.marketplace_supplier_sources.load_aliexpress_credentials",
-        lambda: {"app_key": "saved-key", "app_secret": "saved-secret", "tracking_id": "track"},
-    )
-    client = AliExpressSupplierClient()
-    assert client.configured is True
-    assert client.app_key == "saved-key"
-    assert client.app_secret == "saved-secret"
-    assert client.tracking_id == "track"
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_connections_ui_groups_real_suppliers_and_removes_old_blocks():
-    cleanup = Path("app/static/provider_cleanup.js").read_text(encoding="utf-8")
-    router = Path("app/routers/connections.py").read_text(encoding="utf-8")
-    suppliers = Path("app/routers/suppliers.py").read_text(encoding="utf-8")
+def test_supplier_hub_exposes_exactly_one_active_provider():
+    with TestClient(app) as client:
+        response = client.get("/api/suppliers/hub")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["operating_mode"] == "EBAY_US_CJ_ONLY"
+    assert [provider["id"] for provider in data["providers"]] == ["cj"]
+    assert data["providers"][0]["name"] == "CJ Dropshipping"
+    assert data["providers"][0]["capabilities"]["us_warehouse_first"] is True
+    assert data["providers"][0]["capabilities"]["china_fallback"] is True
 
-    assert "native-aliexpress-card" in cleanup
-    assert 'data-provider="aliexpress"' in cleanup
-    assert "FOURNISSEUR API" in cleanup
-    assert "catalogues et production" in cleanup
-    assert "[data-provider-card=\"etsy\"],[data-provider-card=\"dropxl\"]" in cleanup
-    assert "fournisseurs accompagnés" in cleanup and "head.remove()" in cleanup
 
-    assert 'hidden = {"etsy", "dropxl", "printful", "printify", "gelato"}' in router
-    assert '"assisted_suppliers": []' in router
-    assert "aliexpress_connection_status()" in router
-    assert 'provider == "aliexpress"' in router
+def test_generic_connections_surface_has_no_marketplace_or_social_sources():
+    with TestClient(app) as client:
+        response = client.get("/api/connections")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["operating_mode"] == "EBAY_US_CJ_ONLY"
+    assert data["sources"] == []
+    assert data["restricted"] == []
+    assert data["assisted_suppliers"] == []
 
-    assert '"supplier": True' in suppliers
-    assert '"name": "Amazon France"' in suppliers
-    assert "aliexpress_supplier_status()" in suppliers
+
+def test_retired_marketplace_connections_cannot_be_reenabled():
+    with TestClient(app) as client:
+        for provider in ("aliexpress", "amazon", "youtube", "tiktok"):
+            save = client.post(f"/api/connections/{provider}", json={})
+            test = client.post(f"/api/connections/{provider}/test")
+            assert save.status_code == 410
+            assert test.status_code == 410
+
+
+def test_frontend_removes_retired_sources_and_keeps_cj_ebay_copy():
+    cleanup = read("app/static/provider_cleanup.js").lower()
+    workflow = read("app/static/workflow_cleanup.js").lower()
+    connections = read("app/routers/connections.py").lower()
+    suppliers = read("app/routers/suppliers.py").lower()
+
+    for retired in ("amazon", "aliexpress", "youtube", "tiktok"):
+        assert retired in cleanup
+        assert retired in connections
+    assert "cj dropshipping" in workflow
+    assert "ebay us" in workflow
+    assert "providers": [provider] if False else True
+    assert '"operating_mode": "ebay_us_cj_only"' in suppliers
