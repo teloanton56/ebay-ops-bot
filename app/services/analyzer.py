@@ -25,7 +25,7 @@ async def analyze_catalog() -> dict:
         products = list_products()
         settings = get_settings()
         client = EbayClient()
-        live = bool(settings.ebay_env == "production" and settings.ebay_client_id
+        live = bool(settings.ebay_effective_env == "production" and settings.ebay_client_id
                     and settings.ebay_client_secret and client.token_status().get("connected"))
         run_id = start_analysis_run("EBAY" if live else "CATALOGUE", len(products))
         analyzed = winners = rejected = errors = 0
@@ -33,14 +33,25 @@ async def analyze_catalog() -> dict:
             try:
                 score = price = None
                 if live:
-                    data = await client.search_items(product["title"], 30, product.get("marketplace_id"), product.get("category_id"))
+                    data = await client.search_items(
+                        product["title"], 30, product.get("marketplace_id"), product.get("category_id")
+                    )
                     items = data.get("itemSummaries") or []
-                    summary = summarize_market(items, product)
+                    summary = summarize_market(
+                        items,
+                        product,
+                        total_results=int(data.get("total") or len(items)),
+                    )
                     score = float(summary.get("opportunity_score") or 0)
                     price = summary.get("suggested_price")
+                    updates = {"opportunity_score": score}
                     if price:
-                        set_product_fields(product["id"], target_price=price, suggested_price=price,
-                                           opportunity_score=score)
+                        # Analysis may recommend a safer price, but it never changes the
+                        # operator's target_price. This prevents the hourly analyzer from
+                        # silently turning a profitable product into an unprofitable one.
+                        updates["suggested_price"] = price
+                    set_product_fields(product["id"], **updates)
+
                 refreshed = get_product(product["id"])
                 risk = assess_product(refreshed)
                 if live:
