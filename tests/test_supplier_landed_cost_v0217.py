@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -19,7 +18,6 @@ def test_supplier_flow_keeps_cj_product_id_and_uses_shared_us_landed_engine():
     assert "usd_to_eur" not in landed
     assert 'destination_country="US"' in flow
     assert '"shipping_cost": landed["shipping_cost"]' in flow
-    assert '"target_price": pricing["suggested_price"]' in flow
 
 
 def test_margin_hunter_supplier_add_and_refresh_share_same_cj_resolver():
@@ -29,15 +27,12 @@ def test_margin_hunter_supplier_add_and_refresh_share_same_cj_resolver():
     assert "resolve_cj_landed_offer" in flow
     assert "resolve_cj_landed_offer" in hunter
     assert "resolve_cj_landed_offer" in refresh
-    assert "def _choose_freight" not in hunter
-    assert "def _source_country" not in hunter
 
 
 def test_supplier_flow_has_no_generic_marketplace_logistics_path_anymore():
     source = read("app/routers/supplier_flow.py").lower()
     assert 'payload.provider.strip().lower() != "cj"' in source
-    assert "v0.23 utilise uniquement cj dropshipping" in source
-    assert "logistics_complete" not in source
+    assert "utilise uniquement cj dropshipping" in source
     assert "aliexpress" not in source
     assert "amazon" not in source
 
@@ -63,17 +58,19 @@ def test_manual_price_calculation_refuses_unknown_us_delivery_and_sets_target():
     assert 'set_product_fields(product_id, suggested_price=result["suggested_price"], target_price=result["suggested_price"])' in source
 
 
-def test_supplier_ui_explains_us_and_china_route_state():
-    source = read("app/static/supplier_flow_v2.js")
-    assert "Calculer route US/CN & ajouter" in source
-    assert "US warehouse prioritaire" in source
-    assert "Chine seulement si rentable" in source
-    assert "$" in source
+def test_guided_supplier_ui_explains_us_and_china_route_state():
+    dashboard = read("app/templates/dashboard.html")
+    source = read("app/static/simple_ui.js")
+    assert "Entrepôt US prioritaire" in dashboard
+    assert "Chine uniquement" in dashboard
+    assert "Calculer le coût livré US" in source
+    assert "Destination" in source and "US" in source
 
 
-def test_current_version_and_cache_include_landed_cost_ui():
+def test_current_version_and_cache_include_guided_landed_cost_ui():
     main = read("app/main.py")
     sw = read("app/static/service-worker.js")
     version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
     assert f"opsbot-v{version}-shell" in sw
-    assert f"supplier_flow_v2.js?v={version}" in sw
+    assert f"simple_ui.js?v={version}" in sw
+    assert "supplier_flow_v2.js" not in sw

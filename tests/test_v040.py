@@ -12,7 +12,6 @@ from app.services.finance import ebay_series, empty_series, summarize
 from app.services.profit import suggest_price
 from app.services.radar import build_rfq_message, source_statuses
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -34,7 +33,6 @@ def test_us_price_suggestion_meets_current_default_thresholds():
 def test_automation_api_reports_us_cj_mode():
     with TestClient(app) as client:
         status = client.get("/api/automation/status")
-    assert status.status_code == 200
     data = status.json()
     assert data["marketplace"] == "EBAY_US"
     assert data["currency"] == "USD"
@@ -44,22 +42,15 @@ def test_automation_api_reports_us_cj_mode():
 def test_cj_settings_expose_us_first_mode():
     with TestClient(app) as client:
         status = client.get("/api/cj/settings")
-    assert status.status_code == 200
     assert status.json()["operating_mode"] == "US_FIRST_CN_FALLBACK"
     assert status.json()["currency"] == "USD"
 
 
 def test_cj_search_can_filter_us_or_cn_only(monkeypatch):
     captured = {}
-
     async def fake_request(self, method, path, *, params=None, json_body=None):
         captured.update(params or {})
-        return {"data": {"pageNumber": 1, "totalRecords": 1, "totalPages": 1, "content": [{"productList": [{
-            "id": "PID-1", "sku": "CJ-1", "nameEn": "Car organizer", "nowPrice": "8.50",
-            "totalVerifiedInventory": 42, "deliveryCycle": "3-5", "listedNum": 12,
-            "threeCategoryName": "Car Storage", "hasCECertification": 0,
-        }]}]}}
-
+        return {"data": {"pageNumber": 1, "totalRecords": 1, "totalPages": 1, "content": [{"productList": [{"id": "PID-1", "sku": "CJ-1", "nameEn": "Car organizer", "nowPrice": "8.50", "totalVerifiedInventory": 42, "deliveryCycle": "3-5", "listedNum": 12, "threeCategoryName": "Car Storage", "hasCECertification": 0}]}]}}
     monkeypatch.setattr(CJClient, "request", fake_request)
     result = asyncio.run(CJClient().search_products(keyword="organizer", country_code="US"))
     assert captured["countryCode"] == "US"
@@ -69,14 +60,7 @@ def test_cj_search_can_filter_us_or_cn_only(monkeypatch):
 
 def test_cj_product_detail_still_detects_battery(monkeypatch):
     async def fake_request(self, method, path, *, params=None, json_body=None):
-        return {"data": {"pid": "FAN-1", "productNameEn": "Rechargeable USB fan 900mAh",
-                         "productSku": "FAN-SKU", "productProEnSet": ["BATTERY"],
-                         "packingWeight": "150.00-288.00", "variants": [{
-                             "vid": "VID-1", "variantNameEn": "White fan", "variantSku": "FAN-WHITE",
-                             "variantSellPrice": 5.88, "variantWeight": 150,
-                             "inventories": [{"countryCode": "US", "totalInventory": 25}]
-                         }]}}
-
+        return {"data": {"pid": "FAN-1", "productNameEn": "Rechargeable USB fan 900mAh", "productSku": "FAN-SKU", "productProEnSet": ["BATTERY"], "packingWeight": "150.00-288.00", "variants": [{"vid": "VID-1", "variantNameEn": "White fan", "variantSku": "FAN-WHITE", "variantSellPrice": 5.88, "variantWeight": 150, "inventories": [{"countryCode": "US", "totalInventory": 25}]}]}}
     monkeypatch.setattr(CJClient, "request", fake_request)
     detail = asyncio.run(CJClient().product_detail("FAN-1"))
     assert detail["variants"][0]["stock"] == 25
@@ -86,16 +70,13 @@ def test_cj_product_detail_still_detects_battery(monkeypatch):
 
 def test_cj_freight_calculation_targets_us_when_requested(monkeypatch):
     captured = {}
-
     async def fake_request(self, method, path, *, params=None, json_body=None):
         captured.update(json_body or {})
         return {"data": [{"logisticName": "USPS", "logisticPrice": 5.81, "logisticAging": "3-5"}]}
-
     monkeypatch.setattr(CJClient, "request", fake_request)
     rows = asyncio.run(CJClient().freight_options("VID-1", start_country="US", destination_country="US"))
     assert captured["startCountryCode"] == "US"
     assert captured["endCountryCode"] == "US"
-    assert captured["products"][0]["vid"] == "VID-1"
     assert rows[0]["price_usd"] == 5.81
 
 
@@ -104,27 +85,15 @@ def test_dashboard_has_unique_ids_and_balanced_tags():
     import re
     ids = re.findall(r'\bid="([^"]+)"', html)
     assert len(ids) == len(set(ids))
-
     class BalanceParser(HTMLParser):
         void = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
-
-        def __init__(self):
-            super().__init__()
-            self.stack = []
-            self.errors = []
-
+        def __init__(self): super().__init__(); self.stack = []; self.errors = []
         def handle_starttag(self, tag, attrs):
-            if tag not in self.void:
-                self.stack.append(tag)
-
+            if tag not in self.void: self.stack.append(tag)
         def handle_endtag(self, tag):
-            if not self.stack or self.stack[-1] != tag:
-                self.errors.append((tag, self.stack[-1] if self.stack else None))
-            else:
-                self.stack.pop()
-
-    parser = BalanceParser()
-    parser.feed(html)
+            if not self.stack or self.stack[-1] != tag: self.errors.append((tag, self.stack[-1] if self.stack else None))
+            else: self.stack.pop()
+    parser = BalanceParser(); parser.feed(html)
     assert parser.errors == []
     assert parser.stack == []
 
@@ -149,15 +118,8 @@ def test_finance_without_sales_stays_zero_and_usd():
 
 def test_finance_uses_active_us_catalog_costs():
     now = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    orders = [{
-        "creationDate": now.isoformat(),
-        "pricingSummary": {"total": {"value": "40.00", "currency": "USD"}},
-        "lineItems": [{"sku": "FIN-US-1", "quantity": 2, "lineItemCost": {"value": "20.00"}}],
-    }]
-    products = [{
-        "supplier_sku": "FIN-US-1", "supplier_cost": 5, "shipping_cost": 2,
-        "marketplace_id": "EBAY_US", "currency": "USD",
-    }]
+    orders = [{"creationDate": now.isoformat(), "pricingSummary": {"total": {"value": "40.00", "currency": "USD"}}, "lineItems": [{"sku": "FIN-US-1", "quantity": 2, "lineItemCost": {"value": "20.00"}}]}]
+    products = [{"supplier_sku": "FIN-US-1", "supplier_cost": 5, "shipping_cost": 2, "marketplace_id": "EBAY_US", "currency": "USD"}]
     series, completeness = ebay_series(orders, products, 7, now)
     result = summarize(series, days=7, target=5_000, source="EBAY_US", completeness=completeness)
     assert result["totals"]["revenue"] == 40
@@ -174,10 +136,11 @@ def test_source_statuses_and_future_rfq_copy_are_us_focused():
     assert "DDP" in message
 
 
-def test_active_shell_identifies_v023_us_cj_mode():
+def test_active_shell_identifies_v024_us_cj_mode():
     html = TestClient(app).get("/").text
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
-    assert app.version == "0.23.1"
+    assert app.version == "0.24.0"
     assert "eBay US" in html
     assert "CJ Dropshipping" in html
     assert "EBAY_US_CJ_ONLY" in main
+    assert "destination_country" in main

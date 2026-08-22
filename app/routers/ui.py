@@ -12,7 +12,7 @@ from app.services.diagnostics import build_safe_diagnostic
 from app.services.risk import assess_product
 
 router = APIRouter(prefix="/api/ui", tags=["UI"])
-VERSION = "0.23.0"
+VERSION = "0.24.0"
 
 
 def _active_products() -> list[dict]:
@@ -35,7 +35,7 @@ def summary():
     connected = bool(oauth.get("connected"))
     setup_steps = [
         {"key": "profile", "label": "Mode eBay US / CJ actif", "done": True},
-        {"key": "catalog", "label": "Au moins un produit CJ US", "done": len(products) > 0},
+        {"key": "catalog", "label": "Au moins un produit CJ validé", "done": len(products) > 0},
         {"key": "keys", "label": "Clés eBay Production", "done": credentials_configured},
         {"key": "oauth", "label": "Compte eBay connecté", "done": connected},
     ]
@@ -52,6 +52,7 @@ def summary():
         "environment": settings.ebay_effective_env,
         "marketplace": "EBAY_US",
         "currency": "USD",
+        "destination_country": "US",
         "demo_mode": settings.demo_mode,
         "write_enabled": settings.ebay_write_enabled,
         "publish_enabled": settings.ebay_publish_enabled,
@@ -80,6 +81,7 @@ def system_status():
         "environment": settings.ebay_effective_env,
         "marketplace": "EBAY_US",
         "currency": "USD",
+        "destination_country": "US",
         "operating_mode": "EBAY_US_CJ_ONLY",
         "demo_mode": settings.demo_mode,
         "write_enabled": settings.ebay_write_enabled,

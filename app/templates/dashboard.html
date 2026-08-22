@@ -7,31 +7,31 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ops Bot">
-  <title>eBay Ops Bot v{{ version }}</title>
+  <title>eBay US · CJ Ops Bot v{{ version }}</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/app-icon.svg">
   <link rel="stylesheet" href="/static/app.css?v={{ version }}">
+  <link rel="stylesheet" href="/static/brand.css?v=ops-knot-1">
+  <link rel="stylesheet" href="/static/simple_ui.css?v={{ version }}">
 </head>
 <body>
 <div class="app-shell">
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">O</div>
-      <div><strong>Ops Bot</strong><span>eBay automation</span></div>
+      <div><strong>Ops Bot</strong><span>eBay US · CJ</span></div>
     </div>
 
     <nav class="nav" aria-label="Navigation principale">
       <button class="nav-item active" data-section="overview"><span class="nav-icon">⌂</span><span>Vue d’ensemble</span></button>
-      <button class="nav-item" data-section="radar"><span class="nav-icon">◉</span><span>Radar marché</span><span id="navRadarCount" class="nav-count">0</span></button>
-      <button class="nav-item" data-section="suppliers"><span class="nav-icon">♙</span><span>Fournisseurs</span><span id="navCjCount" class="nav-count">0</span></button>
+      <button class="nav-item" data-section="radar"><span class="nav-icon">◉</span><span>Radar eBay US</span></button>
+      <button class="nav-item" data-section="suppliers"><span class="nav-icon">♙</span><span>CJ Dropshipping</span></button>
       <button class="nav-item" data-section="catalog"><span class="nav-icon">▦</span><span>Produits</span><span id="navProductCount" class="nav-count">0</span></button>
-      <button class="nav-item" data-section="ebay"><span class="nav-icon">◇</span><span>Canaux de vente</span></button>
-      <button class="nav-item" data-section="support"><span class="nav-icon">♡</span><span>SAV</span><span id="navSupportCount" class="nav-count">0</span></button>
-      <button class="nav-item" data-section="finance"><span class="nav-icon">€</span><span>Finance</span></button>
-      <button class="nav-item" data-section="connections"><span class="nav-icon">⇄</span><span>Connexions</span><span id="navConnectionCount" class="nav-count">0</span></button>
-      <button class="nav-item" data-section="help"><span class="nav-icon">?</span><span>Aide</span></button>
-      <button class="nav-item" data-section="settings"><span class="nav-icon">⚙</span><span>Paramètres</span></button>
+      <button class="nav-item" data-section="ebay"><span class="nav-icon">◇</span><span>eBay US</span></button>
+      <button class="nav-item" data-section="support"><span class="nav-icon">♡</span><span>SAV</span></button>
+      <button class="nav-item" data-section="finance"><span class="nav-icon">$</span><span>Finance</span></button>
+      <button class="nav-item" data-section="settings"><span class="nav-icon">⚙</span><span>Connexions</span></button>
     </nav>
 
     <div class="sidebar-bottom">
@@ -39,419 +39,131 @@
         <div class="safety-dot"></div>
         <div><strong>Mode protégé</strong><span>Publication réelle verrouillée</span></div>
       </div>
-      <small>v{{ version }} · {{ 'Cloud synchronisé' if config.cloud_mode else 'Mode local' }}</small>
+      <small>v{{ version }} · eBay US · USD</small>
     </div>
   </aside>
 
   <div class="main-shell">
     <header class="topbar">
       <button id="mobileMenu" class="icon-btn mobile-menu" aria-label="Menu">☰</button>
-      <div class="topbar-title"><strong id="pageTitle">Vue d’ensemble</strong><span id="pageSubtitle">Pilotage du catalogue, des marges et d’eBay.</span></div>
+      <div class="topbar-title"><strong id="pageTitle">Vue d’ensemble</strong><span id="pageSubtitle">Un seul marché, un seul fournisseur, un workflow clair.</span></div>
       <div class="top-status">
-        <button id="envChip" class="chip" data-info="environment">SANDBOX</button>
-        <button id="demoChip" class="chip chip-amber" data-info="demo">DÉMO</button>
-        <button id="safetyChip" class="chip chip-green" data-info="safety">DRY-RUN</button>
-        {% if config.cloud_mode %}<button id="cloudChip" class="chip chip-cloud" data-go="settings"><span class="dot"></span><span>Cloud actif</span></button>{% endif %}
-        <button id="connectionChip" class="chip chip-outline" data-action="connect-ebay"><span class="dot"></span><span>eBay non connecté</span></button>
+        <span class="chip">EBAY_US</span>
+        <span class="chip">USD</span>
+        <span id="cjChip" class="chip chip-outline"><span class="dot"></span><span>CJ</span></span>
+        <span id="ebayChip" class="chip chip-outline"><span class="dot"></span><span>eBay</span></span>
       </div>
     </header>
 
-    <main class="content">
+    <main class="content simple-content">
       <section id="section-overview" class="page-section active">
-        <div class="hero">
+        <div class="hero simple-hero">
           <div>
-            <span class="eyebrow">CENTRE DE CONTRÔLE</span>
-            <h1>Un seul endroit pour piloter votre activité eBay.</h1>
-            <p>Commencez en démo, validez vos marges, puis connectez eBay quand vos clés Developer seront disponibles.</p>
+            <span class="eyebrow">WORKFLOW PRINCIPAL</span>
+            <h1>eBay US → CJ → Produit rentable.</h1>
+            <p>Le bot mesure le marché américain, vérifie le coût réellement livré aux États-Unis et ne garde que les produits qui respectent les règles de marge, stock et délai.</p>
             <div class="hero-actions">
-              <button class="btn btn-primary" data-go="radar">Analyser une tendance</button>
-              <button class="btn btn-secondary" data-go="catalog">Voir mes produits</button>
+              <button class="btn btn-primary" data-go="radar">Lancer une analyse Radar</button>
+              <button class="btn btn-secondary" data-go="catalog">Voir les produits</button>
             </div>
           </div>
-          <div class="hero-visual">
-            <div class="hero-status-card">
-              <div class="hero-status-top"><span class="live-pulse"></span><small>{{ 'CLOUD SÉCURISÉ ACTIF' if config.cloud_mode else 'SYSTÈME LOCAL ACTIF' }}</small></div>
-              <strong>Prêt à analyser</strong>
-              <p>{{ 'Les mêmes données sont accessibles sur vos appareils.' if config.cloud_mode else 'Vos données restent sur cet ordinateur.' }}</p>
-              <div class="hero-guard"><span>✓</span><div><b>Protection active</b><small>Aucune publication réelle</small></div></div>
-              <div class="hero-guard"><span>✓</span><div><b>Sources officielles</b><small>Résultats traçables uniquement</small></div></div>
-            </div>
+          <div class="workflow-card">
+            <div><span>1</span><strong>Radar eBay US</strong><small>Prix et concurrence réels</small></div>
+            <div><span>2</span><strong>CJ Dropshipping</strong><small>US prioritaire · Chine fallback</small></div>
+            <div><span>3</span><strong>Validation</strong><small>Coût livré · marge · risque</small></div>
+            <div><span>4</span><strong>eBay US</strong><small>Préparation puis publication contrôlée</small></div>
           </div>
         </div>
 
         <div class="stats-grid">
-          <article class="stat-card"><span class="stat-icon blue">▦</span><div><small>Produits</small><strong id="statProducts">0</strong><span id="statProductsHint">Catalogue vide</span></div></article>
-          <article class="stat-card"><span class="stat-icon green">✓</span><div><small>Risk Engine</small><strong id="statPass">0</strong><span id="statRiskHint">0 validé</span></div></article>
-          <article class="stat-card"><span class="stat-icon violet">◇</span><div><small>Listings suivis</small><strong id="statListings">0</strong><span>Sandbox / protégé</span></div></article>
-          <article class="stat-card"><span class="stat-icon amber">◎</span><div><small>Compte eBay</small><strong id="statEbay">Hors ligne</strong><span id="statMarketplace">EBAY_FR</span></div></article>
+          <article class="stat-card"><span class="stat-icon blue">▦</span><div><small>Produits actifs</small><strong id="statProducts">0</strong><span>EBAY_US / USD uniquement</span></div></article>
+          <article class="stat-card"><span class="stat-icon green">✓</span><div><small>Risk Engine</small><strong id="statPass">0</strong><span>Produits validés</span></div></article>
+          <article class="stat-card"><span class="stat-icon violet">CJ</span><div><small>Fournisseur</small><strong id="statCj">À connecter</strong><span>Destination US verrouillée</span></div></article>
+          <article class="stat-card"><span class="stat-icon amber">US</span><div><small>Marché</small><strong>eBay US</strong><span>Devise USD</span></div></article>
         </div>
 
-        <div class="two-col">
-          <article class="panel">
-            <div class="panel-head"><div><span class="panel-kicker">MISE EN ROUTE</span><h2>Checklist de lancement</h2></div><span id="setupProgress" class="progress-label">0/5</span></div>
-            <div class="progress"><span id="setupBar"></span></div>
-            <div id="setupChecklist" class="checklist"></div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head"><div><span class="panel-kicker">ACTION RAPIDE</span><h2>Que voulez-vous faire ?</h2></div></div>
-            <div class="quick-grid">
-              <button class="quick-card" data-action="load-demo"><span>✦</span><strong>Charger la démo</strong><small>3 produits pour tester le bot</small></button>
-              <button class="quick-card" data-action="add-product"><span>＋</span><strong>Ajouter un produit</strong><small>Saisie manuelle simple</small></button>
-              <button class="quick-card" data-action="connect-ebay"><span>↗</span><strong>Configurer eBay</strong><small>Clés + connexion OAuth</small></button>
-              <button class="quick-card" data-go="settings"><span>⚙</span><strong>Règles de marge</strong><small>Risk Engine et frais</small></button>
-              <button class="quick-card" data-go="help"><span>?</span><strong>Comprendre le bot</strong><small>Guide complet pour l’équipe</small></button>
-            </div>
-          </article>
-        </div>
+        <article class="panel next-step-panel">
+          <div class="panel-head"><div><span class="panel-kicker">PROCHAINE ACTION</span><h2 id="nextStepTitle">Commencez par le Radar</h2></div></div>
+          <p id="nextStepText" class="muted">Analysez un produit ou une niche sur eBay US pour obtenir un prix de référence réel.</p>
+          <button id="nextStepButton" class="btn btn-primary" data-go="radar">Lancer une analyse Radar</button>
+        </article>
       </section>
 
       <section id="section-radar" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">TENDANCES RÉELLES</span><h1>Radar 360</h1><p>Mesurez les signaux disponibles sur plusieurs marchés, puis recherchez le fournisseur ou l’usine la plus adaptée.</p></div><span class="status-badge good">Aucune donnée simulée</span></div>
-        <article class="panel"><div class="panel-head"><div><span class="panel-kicker">CONNEXIONS</span><h2>Sources de données</h2></div><button class="btn btn-ghost" data-go="connections">Gérer les connexions</button></div><div id="radarSources" class="radar-sources"><div class="loading">Vérification des sources…</div></div></article>
-        <article class="panel auto-discovery-panel">
-          <div class="panel-head"><div><span class="panel-kicker">SHORTS E-COMMERCE</span><h2>Détection automatique des produits viraux <span class="help-tip" tabindex="0" data-tip="Le bot recherche les Shorts récents associés à #ecommerce, #dropshipping, #amazonfinds, #tiktokmademebuyit et #productfinds, puis retire les thèmes génériques.">?</span></h2><p>Le gaming et les bandes-annonces générales sont écartés. Le bot cherche des types de produits à recouper ensuite sur eBay, Amazon et chez les fournisseurs.</p></div><span class="status-badge good">Toutes les 6 h</span></div>
-          <div class="auto-discovery-actions"><label>Pays<select id="autoTrendCountry"><option value="FR">France</option><option value="DE">Allemagne</option><option value="IT">Italie</option><option value="ES">Espagne</option><option value="GB">Royaume-Uni</option><option value="US">États-Unis</option></select></label><button id="runAutoDiscovery" class="btn btn-primary">✦ Analyser les Shorts</button></div>
-          <div id="autoTrendResults" class="empty-state compact"><strong>Aucun relevé e-commerce</strong><span>Connectez YouTube puis lancez l’analyse des Shorts. Les passages suivants seront programmés automatiquement.</span></div>
-        </article>
-        <article class="panel radar-signal-panel">
-          <div class="panel-head"><div><span class="panel-kicker">CONFIRMATION CIBLÉE</span><h2>Recouper une piste sur plusieurs sources <span class="help-tip" tabindex="0" data-tip="TikTok et Etsy ont besoin d'un sujet précis. Utilisez ici un thème détecté automatiquement ou un produit que vous envisagez.">?</span></h2></div><span class="status-badge neutral">À la demande</span></div>
-          <form id="radarSignalForm" class="radar-form radar-signal-form">
-            <label class="full">Produit ou niche<input id="radarSignalQuery" required placeholder="Ex. portable fan, car organizer…"></label>
-            <fieldset class="full radar-markets"><legend>Sources connectées</legend><label><input type="checkbox" name="radar_source" value="tiktok" checked> TikTok Ads UE</label><label><input type="checkbox" name="radar_source" value="youtube" checked> YouTube</label><label><input type="checkbox" name="radar_source" value="etsy" checked> Etsy</label></fieldset>
-            <label>Pays<select id="radarSignalCountry"><option value="FR">France</option><option value="DE">Allemagne</option><option value="IT">Italie</option><option value="ES">Espagne</option></select></label>
-            <div class="radar-actions"><button class="btn btn-primary" type="submit">Mesurer maintenant</button></div>
-          </form>
-          <div id="radarSignalResults" class="empty-state compact"><strong>Aucun relevé social</strong><span>Connectez au moins une source dans l’onglet Connexions.</span></div>
-        </article>
-        <div class="radar-grid">
-          <article class="panel radar-scan-panel"><div class="panel-head"><div><span class="panel-kicker">MARKETPLACES</span><h2>Analyser un produit</h2></div></div>
-            <form id="radarScanForm" class="radar-form"><label class="full">Produit ou niche<input id="radarQuery" required placeholder="Ex. portable fan, car organizer…"></label><fieldset class="full radar-markets"><legend>Marchés eBay <span class="help-tip" tabindex="0" data-tip="eBay exige les clés Production pour mesurer de vraies annonces. Le Sandbox n’est jamais utilisé comme signal de demande.">?</span></legend><label><input type="checkbox" name="radar_market" value="EBAY_FR" checked> France</label><label><input type="checkbox" name="radar_market" value="EBAY_DE" checked> Allemagne</label><label><input type="checkbox" name="radar_market" value="EBAY_IT"> Italie</label><label><input type="checkbox" name="radar_market" value="EBAY_ES"> Espagne</label><label><input type="checkbox" name="radar_market" value="EBAY_GB"> Royaume-Uni</label><label><input type="checkbox" name="radar_market" value="EBAY_US"> États-Unis</label></fieldset><fieldset class="full radar-markets amazon-markets"><legend>Marchés Amazon — Radar uniquement <span class="help-tip" tabindex="0" data-tip="Amazon fournit des résultats catalogue estimés et certains rangs de vente. Il ne fournit pas le volume exact des recherches ni les conversions concurrentes.">?</span></legend><label><input type="checkbox" name="amazon_market" value="AMAZON_FR"> France</label><label><input type="checkbox" name="amazon_market" value="AMAZON_DE"> Allemagne</label><label><input type="checkbox" name="amazon_market" value="AMAZON_IT"> Italie</label><label><input type="checkbox" name="amazon_market" value="AMAZON_ES"> Espagne</label><label><input type="checkbox" name="amazon_market" value="AMAZON_GB"> Royaume-Uni</label><label><input type="checkbox" name="amazon_market" value="AMAZON_US"> États-Unis</label></fieldset><div class="full radar-actions"><button class="btn btn-primary" type="submit">Lancer le relevé réel</button><button class="btn btn-secondary" type="button" data-action="radar-watch-current">Ajouter à la surveillance</button></div></form>
-            <div id="radarResults" class="empty-state compact"><strong>Aucun relevé</strong><span>Sélectionnez les marchés eBay, Amazon, ou les deux. Chaque source utilise sa propre connexion officielle.</span></div>
-          </article>
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">SURVEILLANCE</span><h2>Produits suivis</h2></div></div><form id="radarWatchForm" class="radar-mini-form"><input id="radarWatchKeyword" required placeholder="Mot-clé"><input id="radarWatchNotes" placeholder="Notes facultatives"><button class="btn btn-secondary">Ajouter</button></form><div id="radarWatchlist" class="empty-state compact"><strong>Aucun produit surveillé</strong></div></article>
-        </div>
-      </section>
-
-      <section id="section-catalog" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">CATALOGUE & CONTRÔLE</span><h1>Produits</h1><p>Gérez le catalogue et lancez les contrôles automatiques depuis un seul écran.</p></div><div class="head-actions"><button class="btn btn-secondary" data-action="load-demo">Charger démo</button><button class="btn btn-primary" data-action="add-product">＋ Ajouter</button></div></div>
-
-        <article class="panel opportunity-inbox"><div class="panel-head"><div><span class="panel-kicker">BOÎTE D'OPPORTUNITÉS</span><h2>Niches et produits prêts à examiner <span class="help-tip" tabindex="0" data-tip="Une tendance n'est pas automatiquement un bon produit. Elle doit encore être reliée à une offre fournisseur, un coût livré et une demande eBay mesurée.">?</span></h2><p>Les pistes détectées et les sélections fournisseurs arrivent ici avant d’entrer dans le catalogue.</p></div><button id="refreshOpportunities" class="btn btn-ghost">Actualiser</button></div><div id="productOpportunityArea" class="empty-state compact"><strong>Aucune piste disponible</strong><span>Lancez une détection automatique ou sélectionnez un produit chez CJ.</span></div></article>
-
+        <div class="section-head"><span class="eyebrow">ÉTAPE 1</span><h1>Radar eBay US</h1><p>Mesurez une niche directement sur eBay US. Aucun autre marché n’entre dans le score.</p></div>
         <article class="panel">
-          <div class="toolbar">
-            <div class="toolbar-left"><label class="btn btn-soft file-control">Importer CSV<input id="csvInput" type="file" accept=".csv,text/csv"></label><a class="btn btn-ghost" href="/sample_supplier.csv" download="modele_fournisseur_ebay.csv">Télécharger le vrai modèle</a><button class="btn btn-ghost" data-action="csv-help">Aide CSV</button></div>
-            <div id="catalogMessage" class="toolbar-message"></div>
-          </div>
-          <div class="filter-bar">
-            <input id="filterText" placeholder="Rechercher titre ou SKU…">
-            <select id="filterSupplier"><option value="">Tous les fournisseurs</option></select>
-            <select id="filterStatus"><option value="">Tous les statuts</option><option>À tester</option><option>Winner</option><option>Rejeté</option></select>
-            <input id="filterScore" type="number" min="0" max="100" placeholder="Score min.">
-            <input id="filterMargin" type="number" placeholder="Marge min. %">
-          </div>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>Produit</th><th>Fournisseur</th><th>Prix suggéré</th><th>Score produit <span class="help-tip" tabindex="0" data-tip="Mis à jour automatiquement avec la marge, le stock, le délai, le fournisseur et la qualité de la fiche. La demande eBay réelle reste affichée séparément lorsqu'elle a été mesurée.">?</span></th><th>Marge</th><th>Statut</th><th></th></tr></thead>
-              <tbody id="productTableBody"></tbody>
-            </table>
-          </div>
-          <div id="catalogEmpty" class="empty-state"><div class="empty-icon">▦</div><strong>Votre catalogue est vide</strong><span>Chargez la démo ou ajoutez votre premier produit fournisseur.</span><button class="btn btn-primary" data-action="add-product">Ajouter un produit</button></div>
-        </article>
-
-        <article class="panel automation-hub">
-          <div class="panel-head automation-head"><div><span class="panel-kicker">CONTRÔLE AUTOMATIQUE</span><h2>Analyse du catalogue</h2><p>Recalcule les marges, scores et alertes sans rien publier.</p></div><div class="automation-actions"><span class="status-badge neutral"><b id="navAlertCount">0</b> alerte(s)</span><button id="runAnalysis" class="btn btn-primary">✦ Analyser maintenant</button></div></div>
-          <div class="automation-metrics">
-            <div><small>État</small><strong id="autoState">Prêt</strong><span id="autoSchedule">Toutes les 60 min</span></div>
-            <div><small>Winners</small><strong id="autoWinners">0</strong><span>Dernière analyse</span></div>
-            <div><small>Rejetés</small><strong id="autoRejected">0</strong><span>Dernière analyse</span></div>
-            <div><small>Source</small><strong id="autoMode">Local</strong><span>Lecture seule</span></div>
+          <form id="radarForm" class="simple-search-form">
+            <input id="radarQuery" required minlength="2" placeholder="Ex. car organizer, portable fan…" autocomplete="off">
+            <button class="btn btn-primary" type="submit">Analyser eBay US</button>
+          </form>
+          <div id="radarResults" class="empty-state compact guided-empty">
+            <strong>Aucune analyse pour le moment</strong>
+            <span>Entrez un produit ou une niche. Le bot utilisera uniquement les annonces eBay US observées.</span>
           </div>
         </article>
-        <div class="two-col automation-details">
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">SURVEILLANCE</span><h2>Alertes</h2></div><button id="readAlerts" class="btn btn-ghost">Tout marquer comme lu</button></div><div id="alertsArea" class="empty-state compact"><strong>Aucune alerte</strong></div></article>
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">JOURNAL</span><h2>Historique des analyses</h2></div></div><div id="analysisHistory" class="empty-state compact"><strong>Aucune analyse</strong></div></article>
-        </div>
       </section>
 
       <section id="section-suppliers" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">CENTRE FOURNISSEURS</span><h1>Fournisseurs, catalogues & fabricants</h1><p>Comparez toutes les sources disponibles, centralisez les contacts et préparez vos demandes de prix.</p></div><button class="btn btn-primary" data-action="add-supplier">＋ Ajouter un partenaire</button></div>
-        <div id="supplierKpis" class="supplier-kpis"><article><small>Catalogues connectés</small><strong>—</strong></article><article><small>Partenaires enregistrés</small><strong>—</strong></article><article><small>Contacts fabricants</small><strong>—</strong></article><article><small>Brouillons RFQ</small><strong>—</strong></article></div>
-        <article class="panel supplier-network"><div class="panel-head"><div><span class="panel-kicker">TOUTES LES SOURCES</span><h2>Réseau fournisseurs <span class="help-tip" tabindex="0" data-tip="Disponible signifie que le connecteur peut alimenter les recherches Produits. À valider signifie qu'un compte ou un accès API est encore nécessaire.">?</span></h2><p>CJ, fournisseurs européens, impression à la demande et accès professionnels à venir.</p></div><button class="btn btn-ghost" data-go="connections">Gérer les connexions</button></div><div id="supplierProviderGrid" class="supplier-provider-grid"><div class="loading">Vérification des fournisseurs…</div></div></article>
-        <article class="panel supplier-match-panel"><div class="panel-head"><div><span class="panel-kicker">COMPARAISON</span><h2>Rechercher dans les catalogues connectés</h2><p>Une seule recherche interroge CJ et tous les fournisseurs API prêts.</p></div></div><form id="supplierMatchForm" class="search-form"><span>⌕</span><input id="supplierMatchQuery" required placeholder="Ex. portable fan, car organizer…"><button class="btn btn-primary">Comparer les offres</button></form><div id="supplierMatchResults" class="empty-state compact"><strong>Aucune comparaison lancée</strong><span>Seuls les catalogues réellement connectés répondront.</span></div></article>
-        <article class="panel niche-directory-panel">
-          <div class="panel-head"><div><span class="panel-kicker">ANNUAIRE DE SOURCING</span><h2>Fournisseurs et fabricants plus niches <span class="help-tip" tabindex="0" data-tip="L'annuaire indique où un flux CSV, XML, API ou datafeed peut exister. Le fournisseur doit toujours confirmer le format, les droits d'utilisation et la fréquence de mise à jour.">?</span></h2><p>Filtrez par niche ou type de catalogue, puis ajoutez une piste à vos partenaires pour la vérifier.</p></div><span class="status-badge neutral">19 pistes vérifiables</span></div>
-          <form id="supplierDirectoryFilters" class="directory-filters">
-            <input id="supplierDirectoryQuery" placeholder="Ex. mode, beauté, usine, Europe…">
-            <select id="supplierDirectoryCategory"><option value="">Toutes les niches</option></select>
-            <select id="supplierDirectoryCatalog"><option value="">Tous les accès</option><option value="csv">CSV / XML annoncé</option><option value="api">API</option><option value="feed">Datafeed / intégration</option><option value="request">À demander</option></select>
-            <button class="btn btn-secondary" type="submit">Filtrer</button>
-          </form>
-          <div id="supplierDirectoryResults" class="supplier-directory-grid"><div class="loading">Chargement de l’annuaire…</div></div>
-          <div id="supplierDirectoryNote" class="discovery-guard">Un fichier potentiel n’est jamais considéré comme acquis tant que le fournisseur ne l’a pas confirmé.</div>
-        </article>
-        <article class="panel supplier-directory"><div class="panel-head"><div><span class="panel-kicker">MES PARTENAIRES</span><h2>Fournisseurs manuels & fichiers CSV</h2><p>Pour un fournisseur sans API, rattachez son catalogue CSV ou conservez l’adresse de son flux.</p></div><div class="panel-actions"><a class="btn btn-ghost" href="/sample_supplier.csv" download="modele_fournisseur_ebay.csv">Télécharger le modèle CSV</a><button class="btn btn-secondary" data-action="add-supplier">Ajouter</button></div></div><div id="supplierArea" class="empty-state"><div class="empty-icon">♙</div><strong>Aucun fournisseur manuel</strong><span>Ajoutez votre premier partenaire de sourcing.</span></div></article>
-        <div class="subsection-head"><div><span class="eyebrow">CATALOGUE CONNECTÉ</span><h2>CJ Dropshipping</h2><p>Recherchez un produit, choisissez une variante et calculez son coût réel livré en France.</p></div><span class="status-badge neutral">Lecture seule</span></div>
-        <article class="panel search-panel">
-          <form id="cjSearchForm" class="cj-search-grid">
-            <label>Produit<input id="cjQuery" placeholder="Ex. car organizer, storage box…"></label>
-            <label>Entrepôt<select id="cjCountry"><option value="">Tous les entrepôts</option></select></label>
-            <label>Catégorie<select id="cjCategory"><option value="">Toutes les catégories</option></select></label>
-            <label>Prix maximum ($)<input id="cjMaxPrice" type="number" min="0" step="0.01" placeholder="25"></label>
-            <label>Stock minimum<input id="cjMinStock" type="number" min="0" value="3"></label>
-            <label>Trier par<select id="cjOrder"><option value="0">Pertinence</option><option value="4">Stock</option><option value="1">Popularité CJ</option><option value="3">Nouveautés</option><option value="2">Prix</option></select></label>
+        <div class="section-head"><span class="eyebrow">ÉTAPE 2</span><h1>CJ Dropshipping</h1><p>Recherchez chez CJ. Le coût affiché est calculé pour une livraison vers les États-Unis, en USD.</p></div>
+        <article class="panel">
+          <div class="route-banner"><strong>Destination verrouillée : United States</strong><span>Entrepôt US prioritaire · Chine uniquement si les seuils renforcés sont respectés.</span></div>
+          <form id="cjSearchForm" class="simple-search-form">
+            <input id="cjQuery" required minlength="2" placeholder="Produit à rechercher chez CJ" autocomplete="off">
             <button class="btn btn-primary" type="submit">Rechercher sur CJ</button>
           </form>
-          <div class="info-box"><strong>Sélection puis analyse.</strong><p>Le prix des résultats est le prix produit CJ seul. Dans « Ma sélection », le bouton Analyser ajoute le transport France, la conversion en euros et les frais eBay estimés. Aucune commande ni annonce n’est créée.</p></div>
+          <div id="cjResults" class="empty-state compact guided-empty">
+            <strong>Aucun produit CJ sélectionné</strong>
+            <span>Lancez une recherche ici ou partez d’un résultat du Radar.</span>
+            <button class="btn btn-soft" type="button" data-go="radar">Ouvrir le Radar</button>
+          </div>
         </article>
-        <div class="two-col cj-layout">
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">RÉSULTATS CJ</span><h2 id="cjResultTitle">Lancez une recherche</h2></div></div><div id="cjResults" class="cj-product-grid"><div class="empty-state compact"><strong>Aucun résultat chargé</strong></div></div></article>
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">À ANALYSER</span><h2>Ma sélection</h2></div></div><div id="cjCandidates" class="empty-state compact"><strong>Aucun produit sélectionné</strong></div></article>
-        </div>
-        <div class="subsection-head"><div><span class="eyebrow">SOURCING DIRECT</span><h2>Fabricants & demandes de prix</h2><p>Partez d’une niche détectée, vérifiez les fabricants puis gardez vos RFQ en brouillon local.</p></div><span class="status-badge neutral">Validation humaine obligatoire</span></div>
-        <article class="panel factory-discovery-panel"><div class="panel-head"><div><span class="panel-kicker">RECHERCHE ASSISTÉE</span><h2>Trouver où chercher les fabricants <span class="help-tip" tabindex="0" data-tip="Laissez le champ vide pour reprendre automatiquement la meilleure piste du dernier Radar. Le bot ouvre les annuaires officiels mais n'invente aucune coordonnée.">?</span></h2></div></div><form id="factoryDiscoveryForm" class="search-form"><span>⌕</span><input id="factoryDiscoveryQuery" placeholder="Laisser vide pour utiliser la dernière tendance"><button class="btn btn-primary">Préparer la recherche</button></form><div id="factoryDiscoveryResults" class="empty-state compact"><strong>Aucune recherche préparée</strong><span>Le bot proposera les annuaires adaptés et retrouvera les contacts déjà enregistrés.</span></div></article>
-        <div class="radar-factory-grid">
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">CARNET FABRICANTS</span><h2>Contacts vérifiés</h2></div></div><form id="factoryForm" class="radar-form"><label>Entreprise<input name="company" required></label><label>Source<input name="source" placeholder="Alibaba, Europages…"></label><label>Site<input name="website" type="url"></label><label>Email<input name="email" type="email"></label><label>Pays<input name="country"></label><label>Notes<input name="notes" placeholder="Produit, MOQ, certifications…"></label><div class="full radar-actions"><button class="btn btn-secondary">Enregistrer le contact</button></div></form><div id="factoryList" class="empty-state compact"><strong>Aucun contact fabricant</strong></div></article>
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">DEMANDE DE PRIX</span><h2>Préparer un RFQ <span class="help-tip" tabindex="0" data-tip="Le RFQ reste un brouillon local. Le bot ne l'envoie jamais sans votre validation.">?</span></h2></div><span class="status-badge neutral">Brouillon local</span></div><form id="rfqForm" class="radar-form"><label class="full">Fabricant<select id="rfqFactory" name="factory_id"><option value="">Sans destinataire</option></select></label><label class="full">Produit<input name="product_query" required></label><label class="full">Quantités<input name="quantities" value="10, 50, 100, 500" required></label><label class="full">Spécifications<textarea name="specifications" rows="4" placeholder="Dimensions, matériau, couleur, conformité, emballage…"></textarea></label><div class="full radar-actions"><button class="btn btn-primary">Créer le brouillon</button></div></form><div id="rfqList" class="empty-state compact"><strong>Aucun devis préparé</strong><span>Rien ne sera envoyé automatiquement.</span></div></article>
-        </div>
+      </section>
+
+      <section id="section-catalog" class="page-section">
+        <div class="section-head"><span class="eyebrow">ÉTAPE 3</span><h1>Produits validés</h1><p>Le catalogue actif contient uniquement des produits eBay US en USD issus du flux CJ.</p></div>
+        <article class="panel">
+          <div class="toolbar"><div class="toolbar-left"><button id="refreshProducts" class="btn btn-ghost">Actualiser</button></div><span id="catalogHint" class="toolbar-message"></span></div>
+          <div id="productList" class="empty-state guided-empty">
+            <strong>Aucun produit validé</strong>
+            <span>Commencez par mesurer le marché puis validez un coût livré CJ.</span>
+            <button class="btn btn-primary" type="button" data-go="radar">Lancer une analyse Radar</button>
+          </div>
+        </article>
       </section>
 
       <section id="section-ebay" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">VENTE MULTICANALE</span><h1>Canaux de vente & commandes</h1><p>Commencez avec eBay, puis réutilisez le catalogue sur les marketplaces réellement adaptées à vos produits.</p></div><span class="status-badge good">Dry-run actif</span></div>
-        <article class="panel sales-channel-panel"><div class="panel-head"><div><span class="panel-kicker">FEUILLE DE ROUTE</span><h2>Où vendre simultanément ? <span class="help-tip" tabindex="0" data-tip="Chaque marketplace impose ses propres catégories, attributs, frais, délais, retours et règles de dropshipping. Une connexion n'est jamais activée globalement sans test séparé.">?</span></h2><p>Cdiscount est proposé ensuite pour la France, puis Kaufland pour l’Europe. Amazon vient seulement quand la logistique et le SAV sont solides.</p></div></div><div id="salesChannelGrid" class="sales-channel-grid"><div class="loading">Chargement des canaux…</div></div><div id="salesChannelGuard" class="discovery-guard"></div></article>
-        <article class="panel ebay-workspace">
-          <div class="panel-head"><div><span class="panel-kicker">ANNONCES</span><h2>Listings suivis</h2></div></div>
-          <div id="listingArea" class="empty-state"><div class="empty-icon">◇</div><strong>Aucun listing suivi</strong><span>Générez d’abord une fiche depuis le catalogue. La publication eBay viendra après la connexion Sandbox.</span><button class="btn btn-secondary" data-go="catalog">Ouvrir le catalogue</button></div>
+        <div class="section-head"><span class="eyebrow">ÉTAPE 4</span><h1>eBay US</h1><p>Préparez uniquement les produits dont le coût CJ et les règles Risk/Compliance sont encore valides.</p></div>
+        <article class="panel">
+          <div id="ebayState" class="empty-state guided-empty">
+            <strong>Aucun produit prêt à publier</strong>
+            <span>Validez d’abord un produit CJ rentable dans le catalogue.</span>
+            <button class="btn btn-primary" type="button" data-go="catalog">Voir les produits</button>
+          </div>
         </article>
-        <article class="panel ebay-workspace"><div class="panel-head"><div><span class="panel-kicker">COMMANDES</span><h2>Suivi eBay</h2></div><button class="btn btn-secondary" id="refreshOrders">Actualiser</button></div><div id="ordersArea" class="empty-state"><div class="empty-icon">▤</div><strong>Compte eBay non connecté</strong><span>Vous pouvez continuer à développer le catalogue en attendant l’approbation Developer.</span><button class="btn btn-primary" data-action="connect-ebay">Configurer eBay</button></div></article>
       </section>
 
       <section id="section-support" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">SERVICE APRÈS-VENTE</span><h1>SAV & litiges</h1><p>Centralisez les demandes clients, les délais de réponse et les brouillons sans envoyer de message automatiquement.</p></div><button class="btn btn-primary" data-action="add-support">＋ Nouveau dossier</button></div>
-        <div id="supportKpis" class="support-kpis"><article><small>Dossiers ouverts</small><strong>—</strong></article><article><small>Nouveaux</small><strong>—</strong></article><article><small>Urgents</small><strong>—</strong></article><article><small>En retard</small><strong>—</strong></article><article><small>Résolus</small><strong>—</strong></article></div>
-        <article class="panel support-assistant"><div><span class="panel-kicker">ASSISTANT LOCAL</span><h2>Réponses guidées, jamais envoyées seules <span class="help-tip" tabindex="0" data-tip="Le bot prépare une base adaptée au motif du dossier. Vous devez vérifier les faits, le suivi, le remboursement et relire le texte avant de l'envoyer.">?</span></h2><p>Le brouillon évite les réponses répétitives tout en gardant la validation humaine obligatoire.</p></div><span class="status-badge good">Envoi automatique bloqué</span></article>
-        <article class="panel"><div class="toolbar"><div class="toolbar-left"><input id="supportSearch" placeholder="Commande, sujet ou client…"><select id="supportStatusFilter"><option value="">Tous les statuts</option><option>Nouveau</option><option>En cours</option><option>En attente client</option><option>Résolu</option></select><select id="supportPriorityFilter"><option value="">Toutes les priorités</option><option>Urgente</option><option>Haute</option><option>Normale</option></select></div><button id="refreshSupport" class="btn btn-ghost">Actualiser</button></div><div id="supportCasesArea" class="empty-state"><div class="empty-icon">♡</div><strong>Aucun dossier SAV</strong><span>Les futures demandes eBay pourront être regroupées ici après connexion.</span><button class="btn btn-primary" data-action="add-support">Créer un dossier test</button></div></article>
+        <div class="section-head"><span class="eyebrow">APRÈS-VENTE</span><h1>SAV</h1><p>Centralisez les dossiers clients une fois les premières commandes arrivées.</p></div>
+        <article class="panel"><div id="supportState" class="empty-state guided-empty"><strong>Aucun dossier SAV</strong><span>Les incidents de commande apparaîtront ici. Les réponses restent soumises à validation humaine.</span></div></article>
       </section>
 
       <section id="section-finance" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">PILOTAGE</span><h1>Finance</h1><p>Suivez uniquement les ventes enregistrées sur la période et votre progression réelle vers les prochains paliers.</p></div><span id="financeSource" class="status-badge neutral">Aucune vente</span></div>
-        <article class="panel finance-controls-panel">
-          <form id="financeFilters" class="finance-controls">
-            <label>Nombre de jours<input id="financeDays" type="number" min="1" max="3650" value="30"></label>
-            <div class="finance-quick-days" aria-label="Périodes rapides"><button type="button" data-finance-days="7">7 j</button><button type="button" data-finance-days="30" class="active">30 j</button><button type="button" data-finance-days="90">90 j</button><button type="button" data-finance-days="365">1 an</button></div>
-            <label>Objectif de CA<select id="financeTarget"><option value="5000">5 000 €</option><option value="10000">10 000 €</option><option value="50000">50 000 €</option><option value="100000">100 000 €</option></select></label>
-            <button class="btn btn-primary" type="submit">Actualiser</button>
-          </form>
-        </article>
-        <div id="financeKpis" class="finance-kpis">
-          <article><small>Chiffre d’affaires</small><strong>—</strong><span>sur la période</span></article>
-          <article><small>Résultat net estimé</small><strong>—</strong><span>hors fiscalité</span></article>
-          <article><small>Marge nette</small><strong>—</strong><span>estimation</span></article>
-          <article><small>Commandes</small><strong>—</strong><span>sur la période</span></article>
-          <article><small>Panier moyen</small><strong>—</strong><span>par commande</span></article>
-        </div>
-        <div class="finance-main-grid">
-          <article class="panel finance-goal-card"><div class="panel-head"><div><span class="panel-kicker">OBJECTIF</span><h2 id="financeGoalTitle">Cap vers 5 000 €</h2></div><strong id="financeGoalPercent">0 %</strong></div><div class="goal-progress"><span id="financeGoalBar"></span></div><div id="financeGoalStats" class="goal-stats"></div><div id="financeMilestones" class="milestone-track"></div></article>
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">ÉVOLUTION</span><h2>CA et résultat par jour</h2></div><div class="finance-legend"><span class="revenue">CA</span><span class="profit">Résultat</span></div></div><div id="financeChart" class="finance-chart"><div class="loading">Chargement…</div></div></article>
-        </div>
-        <div class="finance-bottom-grid">
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">COÛTS ESTIMÉS</span><h2>Où part le chiffre d’affaires ?</h2></div></div><div id="financeCosts" class="cost-breakdown"></div></article>
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">LECTURE</span><h2>À savoir</h2></div></div><div id="financeNotice" class="info-box"><strong>Ventes réelles uniquement.</strong><p>Le tableau reste à zéro jusqu’à la première commande eBay récupérée.</p></div></article>
-        </div>
-      </section>
-
-      <section id="section-connections" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">CENTRE DE CONNEXIONS</span><h1>Comptes & fournisseurs</h1><p>Connectez les services disponibles et voyez immédiatement lesquels nécessitent encore une validation fournisseur.</p></div><span class="status-badge good">Accès privé protégé</span></div>
-        <div id="connectionCards" class="connection-grid">
-          <div class="connection-group-head"><span>SIGNAUX & MARKETPLACES</span><strong>Analyser la demande</strong><p>Connexions officielles utilisées uniquement pour observer les données autorisées.</p></div>
-          <article class="panel connection-card connection-card-ebay">
-            <div class="panel-head"><div><span class="panel-kicker">MARKETPLACE PRINCIPALE</span><h2>eBay Developer</h2></div><span id="ebaySettingsStatus" class="status-badge neutral">À connecter</span></div>
-            <p>Clés Developer et autorisation OAuth. L'environnement reste verrouillé sur Sandbox.</p>
-            <form id="ebaySettingsForm" class="form-grid">
-              <label>Client ID<input id="clientId" name="client_id" autocomplete="off" placeholder="App ID / Client ID"></label>
-              <label>Client Secret<input id="clientSecret" name="client_secret" type="password" autocomplete="new-password" placeholder="Laisser vide pour conserver l’existant"></label>
-              <label class="full">RuName / Redirect URI name<input id="runame" name="runame" autocomplete="off" placeholder="RuName eBay"></label>
-              <label>Environnement<select id="environment" name="environment"><option value="sandbox">Sandbox</option><option value="production" disabled>Production (plus tard)</option></select></label>
-              <label>Marketplace<select id="marketplaceId" name="marketplace_id"><option value="EBAY_FR">France</option><option value="EBAY_DE">Allemagne</option><option value="EBAY_GB">Royaume-Uni</option><option value="EBAY_US">États-Unis</option></select></label>
-              <label>Devise<select id="currency" name="currency"><option>EUR</option><option>GBP</option><option>USD</option></select></label>
-              <div class="full form-actions"><button class="btn btn-secondary" type="submit">Enregistrer</button><button id="oauthButton" class="btn btn-primary" type="button">Connecter le compte</button></div>
-            </form>
-          </article>
-          <article class="panel connection-card connection-card-amazon" data-provider-card="amazon">
-            <div class="panel-head"><div><span class="panel-kicker">RADAR MARKETPLACE</span><h2>Amazon SP-API</h2></div><span id="connectionStatus-amazon" class="status-badge neutral">À connecter</span></div>
-            <p>Recherche catalogue, catégories, rangs de vente et prix autorisés. Cette connexion ne peut ni publier, ni modifier un produit, ni récupérer des commandes.</p>
-            <form class="form-grid connection-form" data-provider="amazon">
-              <label>Client ID LWA<input name="client_id" type="password" autocomplete="new-password" placeholder="amzn1.application-oa2-client…"></label>
-              <label>Client Secret LWA<input name="client_secret" type="password" autocomplete="new-password"></label>
-              <label class="full">Refresh Token<input name="refresh_token" type="password" autocomplete="new-password" placeholder="Atzr|…"></label>
-              <div class="full form-actions"><a class="btn btn-ghost" href="https://developer-docs.amazon.com/sp-api/docs/onboarding-overview" target="_blank" rel="noopener">Configurer SP-API ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div>
-            </form>
-            <div id="connectionHelp-amazon" class="connection-help">Compte vendeur professionnel et rôle Product Listing requis. Le rôle Pricing reste facultatif.</div>
-            <div class="policy-note">Lecture seule Radar : aucune opération Amazon d’écriture n’existe dans le bot.</div>
-          </article>
-          <article class="panel connection-card" data-provider-card="tiktok">
-            <div class="panel-head"><div><span class="panel-kicker">TENDANCES PUBLICITAIRES UE</span><h2>TikTok</h2></div><span id="connectionStatus-tiktok" class="status-badge neutral">À connecter</span></div>
-            <p>Commercial Content API : publicités, annonceurs, durée de diffusion et portée déclarée.</p>
-            <form class="form-grid connection-form" data-provider="tiktok"><label>Client Key<input name="client_key" type="password" autocomplete="new-password"></label><label>Client Secret<input name="client_secret" type="password" autocomplete="new-password"></label><div class="full form-actions"><a class="btn btn-ghost" href="https://developers.tiktok.com/products/commercial-content-api" target="_blank" rel="noopener">Demander l’accès ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div></form>
-            <div id="connectionHelp-tiktok" class="connection-help">Aucun scraping : uniquement l’API TikTok autorisée.</div>
-          </article>
-          <article class="panel connection-card" data-provider-card="youtube">
-            <div class="panel-head"><div><span class="panel-kicker">SHORTS E-COMMERCE</span><h2>YouTube</h2></div><span id="connectionStatus-youtube" class="status-badge neutral">À connecter</span></div>
-            <p>Shorts récents associés à l’e-commerce, au dropshipping, aux produits viraux et aux trouvailles Amazon/TikTok.</p>
-            <form class="form-grid connection-form" data-provider="youtube"><label class="full">Clé API Google<input name="api_key" type="password" autocomplete="new-password"></label><div class="full form-actions"><a class="btn btn-ghost" href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">Créer la clé ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div></form>
-            <div id="connectionHelp-youtube" class="connection-help">Deux recherches ciblées toutes les six heures restent largement sous le quota Google.</div>
-          </article>
-          <article class="panel connection-card" data-provider-card="etsy">
-            <div class="panel-head"><div><span class="panel-kicker">MARKETPLACE</span><h2>Etsy</h2></div><span id="connectionStatus-etsy" class="status-badge neutral">À connecter</span></div>
-            <p>Annonces actives, prix et favoris publics. Les ventes concurrentes ne sont pas accessibles.</p>
-            <form class="form-grid connection-form" data-provider="etsy"><label class="full">Keystring Etsy<input name="api_key" type="password" autocomplete="new-password"></label><div class="full form-actions"><a class="btn btn-ghost" href="https://www.etsy.com/developers/register" target="_blank" rel="noopener">Créer l’application ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div></form>
-            <div id="connectionHelp-etsy" class="connection-help">Connexion publique en lecture seule.</div>
-          </article>
-          <div class="connection-group-head"><span>FOURNISSEURS CONNECTABLES</span><strong>Catalogues et production</strong><p>Les tests lisent seulement les comptes et catalogues. Le passage de commande reste bloqué.</p></div>
-          <article class="panel connection-card" data-provider-card="dropxl">
-            <div class="panel-head"><div><span class="panel-kicker">STOCK EUROPÉEN</span><h2>DropXL / vidaXL</h2></div><span id="connectionStatus-dropxl" class="status-badge neutral">À connecter</span></div>
-            <p>Maison, jardin, bricolage et animaux avec prix et stock européens.</p>
-            <form class="form-grid connection-form" data-provider="dropxl"><label>Email du compte API<input name="api_email" type="email" autocomplete="off" placeholder="Email DropXL"></label><label>Jeton API<input name="api_token" type="password" autocomplete="new-password"></label><label>Environnement<select name="environment"><option value="production">Production</option><option value="sandbox">Sandbox DropXL</option></select></label><div class="full form-actions"><a class="btn btn-ghost" href="https://b2b.dropxl.com/pages/1-api" target="_blank" rel="noopener">Créer / voir le jeton ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div></form>
-            <div id="connectionHelp-dropxl" class="connection-help">Lecture du catalogue uniquement.</div>
-          </article>
-          <article class="panel connection-card" data-provider-card="printful">
-            <div class="panel-head"><div><span class="panel-kicker">PRINT ON DEMAND</span><h2>Printful</h2></div><span id="connectionStatus-printful" class="status-badge neutral">À connecter</span></div>
-            <p>Textile, accessoires et décoration personnalisés, produits après la vente.</p>
-            <form class="form-grid connection-form" data-provider="printful"><label class="full">Jeton privé Printful<input name="api_key" type="password" autocomplete="new-password"></label><div class="full form-actions"><a class="btn btn-ghost" href="https://developers.printful.com/tokens" target="_blank" rel="noopener">Créer le jeton ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div></form>
-            <div id="connectionHelp-printful" class="connection-help">Aucun ordre de production envoyé.</div>
-          </article>
-          <article class="panel connection-card" data-provider-card="printify">
-            <div class="panel-head"><div><span class="panel-kicker">PRINT ON DEMAND</span><h2>Printify</h2></div><span id="connectionStatus-printify" class="status-badge neutral">À connecter</span></div>
-            <p>Catalogue personnalisable et comparaison de plusieurs ateliers d’impression.</p>
-            <form class="form-grid connection-form" data-provider="printify"><label class="full">Jeton API Printify<input name="api_key" type="password" autocomplete="new-password"></label><div class="full form-actions"><a class="btn btn-ghost" href="https://printify.com/app/account/api" target="_blank" rel="noopener">Créer le jeton ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div></form>
-            <div id="connectionHelp-printify" class="connection-help">Aucun produit ni ordre créé.</div>
-          </article>
-          <article class="panel connection-card" data-provider-card="gelato">
-            <div class="panel-head"><div><span class="panel-kicker">PRODUCTION LOCALE</span><h2>Gelato</h2></div><span id="connectionStatus-gelato" class="status-badge neutral">À connecter</span></div>
-            <p>Impression à la demande via un réseau international de producteurs locaux.</p>
-            <form class="form-grid connection-form" data-provider="gelato"><label class="full">Clé API Gelato<input name="api_key" type="password" autocomplete="new-password"></label><div class="full form-actions"><a class="btn btn-ghost" href="https://dashboard.gelato.com/keys" target="_blank" rel="noopener">Créer la clé ↗</a><button class="btn btn-primary" type="submit">Enregistrer et tester</button></div></form>
-            <div id="connectionHelp-gelato" class="connection-help">Aucun ordre de production envoyé.</div>
-          </article>
-          <article class="panel connection-card connection-card-cj">
-            <div class="panel-head"><div><span class="panel-kicker">FOURNISSEUR MONDIAL</span><h2>CJ Dropshipping</h2></div><span id="cjSettingsStatus" class="status-badge neutral">À connecter</span></div>
-            <p>Recherche catalogue, variantes, stock et calcul du transport France en lecture seule.</p>
-            <form id="cjSettingsForm" class="form-grid">
-              <label class="full">Clé API CJ<input id="cjApiKey" name="api_key" type="password" autocomplete="new-password" placeholder="Collez la clé API copiée depuis CJ"></label>
-              <div class="full form-actions"><button class="btn btn-primary" type="submit">Enregistrer et tester</button><button id="testCjButton" class="btn btn-secondary" type="button">Tester</button></div>
-            </form>
-            <div id="cjConnectionHelp" class="connection-help">Aucune commande ni annonce ne sera créée.</div>
-          </article>
-          <div class="connection-group-head"><span>ACCÈS À OBTENIR</span><strong>Fournisseurs accompagnés et usines</strong><p>Ces fournisseurs donnent leurs identifiants après inscription, validation ou choix d’une formule.</p></div>
-          <article class="panel connection-card program-card"><div class="panel-head"><div><span class="panel-kicker">SOURCING MONDIAL</span><h2>HyperSKU</h2></div><span class="status-badge review">Accès API à demander</span></div><p>Alternative proche de CJ : sourcing, contrôle qualité, personnalisation et expédition.</p><div class="program-actions"><a class="btn btn-secondary" href="https://app.hypersku.com/" target="_blank" rel="noopener">Créer le compte ↗</a><small>Demandez ensuite l’activation Open API à votre agent.</small></div></article>
-          <article class="panel connection-card program-card"><div class="panel-head"><div><span class="panel-kicker">DROPSHIPPING MONDIAL</span><h2>Banggood</h2></div><span class="status-badge review">Validation requise</span></div><p>L’API gratuite est délivrée aux comptes acceptés dans le programme dropshipping.</p><div class="program-actions"><a class="btn btn-secondary" href="https://www.banggood.com/index.php?com=account&t=dropshipGuidance" target="_blank" rel="noopener">Demander l’accès ↗</a><small>Le connecteur sera finalisé avec les identifiants et la documentation du compte.</small></div></article>
-          <article class="panel connection-card program-card"><div class="panel-head"><div><span class="panel-kicker">FOURNISSEURS US</span><h2>Wholesale2B</h2></div><span class="status-badge review">Plan API requis</span></div><p>Catalogue de grossistes américains à envisager lors d’un lancement sur eBay US.</p><div class="program-actions"><a class="btn btn-secondary" href="https://www.wholesale2b.com/dropship-api-plan.html" target="_blank" rel="noopener">Voir l’offre API ↗</a><small>Pas prioritaire pour vendre depuis la France.</small></div></article>
-          <article class="panel connection-card program-card"><div class="panel-head"><div><span class="panel-kicker">PRIX USINE</span><h2>Alibaba.com</h2></div><span class="status-badge review">Contrat fournisseur</span></div><p>Recherche de fabricants, devis, échantillons et négociation pour les produits déjà validés.</p><div class="program-actions"><a class="btn btn-secondary" href="https://sourcing.alibaba.com/" target="_blank" rel="noopener">Ouvrir les demandes de devis ↗</a><small>Aucune commande n’est envoyée automatiquement.</small></div></article>
-          <article class="panel connection-card program-card policy-card"><div class="panel-head"><div><span class="panel-kicker">VEILLE UNIQUEMENT</span><h2>AliExpress</h2></div><span class="status-badge danger">Commandes bloquées</span></div><p>Utilisable pour comparer les produits et repérer des idées, mais pas comme source automatique d’une commande eBay.</p><div class="policy-note">eBay interdit d’acheter l’article après la vente sur une autre marketplace de détail. Le bot ne transmettra donc jamais de commande AliExpress.</div></article>
-        </div>
-        <div class="connection-security-note"><span>✓</span><div><strong>Lecture seule par défaut</strong><p>Les identifiants restent dans votre espace privé protégé. Les connecteurs de tendances et fournisseurs ne publient rien et ne passent aucune commande.</p></div></div>
-      </section>
-
-      <section id="section-help" class="page-section">
-        <div class="section-head row-between"><div><span class="eyebrow">GUIDE DE L’ÉQUIPE</span><h1>Comprendre et utiliser Ops Bot</h1><p>Ce guide explique le parcours complet, ce que chaque onglet mesure réellement et les validations qui restent humaines.</p></div><span class="status-badge good">Débutant bienvenu</span></div>
-
-        <article class="panel help-intro">
-          <div><span class="panel-kicker">LE PRINCIPE</span><h2>Une opportunité doit franchir six étapes avant une vente.</h2><p>Le bot rassemble les informations et automatise les contrôles répétitifs. Il ne transforme jamais une simple tendance en produit gagnant sans fournisseur, coût livré, demande mesurée et validation humaine.</p></div>
-          <div class="help-flow" aria-label="Parcours recommandé">
-            <button data-go="connections"><span>1</span><strong>Connecter</strong><small>Sources officielles</small></button>
-            <button data-go="radar"><span>2</span><strong>Détecter</strong><small>Tendances réelles</small></button>
-            <button data-go="suppliers"><span>3</span><strong>Sourcer</strong><small>Prix et qualité</small></button>
-            <button data-go="catalog"><span>4</span><strong>Valider</strong><small>Marge et risques</small></button>
-            <button data-go="ebay"><span>5</span><strong>Préparer</strong><small>Annonce eBay</small></button>
-            <button data-go="support"><span>6</span><strong>Suivre</strong><small>Ventes et SAV</small></button>
-          </div>
-        </article>
-
-        <div class="help-grid">
-          <article class="help-card"><div class="help-card-icon">⌂</div><div><span>VUE D’ENSEMBLE</span><h2>Le tableau de bord</h2><p>Affiche le nombre de produits, les contrôles Risk Engine, les annonces suivies et l’état du compte eBay. La checklist indique ce qu’il reste à configurer.</p><button class="mini-btn" data-go="overview">Ouvrir la vue d’ensemble</button></div></article>
-          <article class="help-card"><div class="help-card-icon">◉</div><div><span>RADAR MARCHÉ</span><h2>Repérer puis confirmer une niche</h2><p>YouTube analyse les Shorts e-commerce récents et filtre les thèmes sans intérêt produit. TikTok et Etsy servent à recouper une piste. eBay mesure les annonces ; Amazon ajoute son catalogue et ses rangs disponibles. Aucun volume de recherche ou taux de conversion privé n’est inventé.</p><button class="mini-btn" data-go="radar">Ouvrir le Radar</button></div></article>
-          <article class="help-card"><div class="help-card-icon">♙</div><div><span>FOURNISSEURS</span><h2>Trouver l’offre adaptée</h2><p>Compare les catalogues API connectés, les imports CSV et l’annuaire de niche. Les contacts fabricants et RFQ restent des pistes ou brouillons : aucun message et aucune commande ne partent seuls.</p><button class="mini-btn" data-go="suppliers">Voir les fournisseurs</button></div></article>
-          <article class="help-card"><div class="help-card-icon">▦</div><div><span>PRODUITS</span><h2>Contrôler rentabilité et préparation</h2><p>Centralise produits manuels, CSV et fournisseurs. Le score produit /100 mesure la préparation de la fiche, du stock, du délai et de la marge ; le signal de demande eBay reste séparé. Les statuts sont À tester, Winner ou Rejeté.</p><button class="mini-btn" data-go="catalog">Voir les produits</button></div></article>
-          <article class="help-card"><div class="help-card-icon">◇</div><div><span>CANAUX DE VENTE</span><h2>Préparer les annonces</h2><p>eBay est le premier canal opérationnel. Le bot prépare titres, descriptions, prix, quantités et brouillons. Sandbox et dry-run restent les protections par défaut ; une publication réelle exige une décision explicite.</p><button class="mini-btn" data-go="ebay">Voir les canaux</button></div></article>
-          <article class="help-card"><div class="help-card-icon">♡</div><div><span>SAV</span><h2>Traiter les demandes clients</h2><p>Classe les dossiers par priorité, statut et échéance, puis prépare une réponse relisible. Les brouillons ne sont jamais envoyés automatiquement au client.</p><button class="mini-btn" data-go="support">Ouvrir le SAV</button></div></article>
-          <article class="help-card"><div class="help-card-icon">€</div><div><span>FINANCE</span><h2>Suivre les résultats réels</h2><p>Le chiffre d’affaires, les coûts et le résultat net viennent des ventes réellement récupérées. Sans vente connectée, les montants restent à zéro. Les paliers 5K, 10K, 50K et 100K sont des objectifs, pas des prévisions.</p><button class="mini-btn" data-go="finance">Voir les finances</button></div></article>
-          <article class="help-card"><div class="help-card-icon">⇄</div><div><span>CONNEXIONS</span><h2>Brancher les sources officielles</h2><p>Regroupe eBay, Amazon Radar, CJ, YouTube, TikTok, Etsy et les fournisseurs disponibles. Une clé enregistrée n’est considérée comme connectée qu’après un vrai test auprès du service concerné.</p><button class="mini-btn" data-go="connections">Gérer les connexions</button></div></article>
-          <article class="help-card"><div class="help-card-icon">⚙</div><div><span>PARAMÈTRES</span><h2>Protéger et diagnostiquer</h2><p>Permet de régler les seuils de marge et de risque, installer l’app, créer des sauvegardes et exporter un diagnostic sécurisé. Les mises à jour sont déployées automatiquement sur tous les appareils.</p><button class="mini-btn" data-go="settings">Ouvrir les paramètres</button></div></article>
-        </div>
-
-        <div class="two-col help-guardrails">
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">AUTOMATISÉ</span><h2>Ce que le bot peut faire seul</h2></div><span class="status-badge good">Sans publication</span></div><ul><li>Relever des signaux depuis les sources connectées.</li><li>Recalculer marges, prix conseillés, scores et alertes.</li><li>Surveiller stock, délais et variations de coût disponibles.</li><li>Préparer des annonces, RFQ et réponses SAV en brouillon.</li><li>Mettre à jour l’application et sauvegarder la base.</li></ul></article>
-          <article class="panel"><div class="panel-head"><div><span class="panel-kicker">VALIDATION HUMAINE</span><h2>Ce qui demande toujours un accord</h2></div><span class="status-badge review">Contrôle obligatoire</span></div><ul><li>Choisir définitivement un produit et vérifier sa conformité.</li><li>Commander un échantillon ou négocier avec une usine.</li><li>Envoyer un RFQ, un message client ou une commande.</li><li>Activer eBay Production et publier une annonce réelle.</li><li>Modifier les règles financières ou partager un accès.</li></ul></article>
-        </div>
-
-        <article class="panel help-faq"><div class="panel-head"><div><span class="panel-kicker">QUESTIONS COURANTES</span><h2>Les réponses à connaître</h2></div></div>
-          <div class="faq-list">
-            <details><summary>Un score produit élevé signifie-t-il que le produit va se vendre ?</summary><p>Non. Il indique que l’offre est bien préparée selon les données disponibles. La demande eBay doit être mesurée séparément, puis confirmée par un test réel à petite échelle.</p></details>
-            <details><summary>Pourquoi la Finance affiche-t-elle zéro ?</summary><p>Parce que le bot ne fabrique aucune prévision. Les montants apparaissent uniquement après récupération de vraies commandes depuis un canal connecté.</p></details>
-            <details><summary>Le bot peut-il publier ou commander tout seul ?</summary><p>Pas dans la configuration actuelle. Sandbox, mode démo et dry-run bloquent les écritures et publications. Les commandes fournisseur et messages restent eux aussi bloqués.</p></details>
-            <details><summary>Comment importer le catalogue d’un fournisseur ?</summary><p>Utilisez son connecteur API lorsqu’il existe. Sinon, téléchargez le modèle depuis Produits, remplissez au minimum le SKU, le titre et le coût fournisseur, puis importez le CSV.</p></details>
-            <details><summary>Comment obtenir de l’aide sans exposer les clés ?</summary><p>Dans Paramètres, cliquez sur « Exporter le diagnostic sécurisé ». Le fichier contient des états et compteurs, jamais les secrets, clients, commandes ou contenus privés.</p></details>
-            <details><summary>Comment arrivent les mises à jour ?</summary><p>Les nouvelles versions sont testées, envoyées sur GitHub puis déployées automatiquement par Render. Fermez et rouvrez l’application pour charger immédiatement la dernière version.</p></details>
-          </div>
-        </article>
-
-        <article class="help-team-note"><span>!</span><div><strong>Accès de l’associé</strong><p>Cette version possède encore un seul compte administrateur. Ne transmettez jamais le mot de passe par message non sécurisé. Des comptes individuels avec droits séparés pourront être ajoutés dans une prochaine version.</p></div></article>
+        <div class="section-head"><span class="eyebrow">PERFORMANCE</span><h1>Finance</h1><p>Suivez les ventes et la rentabilité réelle quand eBay commencera à générer des commandes.</p></div>
+        <article class="panel"><div id="financeState" class="empty-state guided-empty"><strong>Aucune vente enregistrée</strong><span>La priorité actuelle est de valider la boucle Radar → CJ → Produit.</span><button class="btn btn-primary" type="button" data-go="radar">Trouver un premier produit</button></div></article>
       </section>
 
       <section id="section-settings" class="page-section">
-        <div class="section-head"><div><span class="eyebrow">RÈGLES & DIAGNOSTIC</span><h1>Paramètres</h1><p>Ajustez la sécurité financière et contrôlez l’état du bot.</p></div></div>
-        <div class="settings-grid">
-          <article class="panel settings-card full-card cloud-control-card">
-            <div class="panel-head"><div><span class="panel-kicker">APPLICATION & DONNÉES</span><h2>{{ 'Espace cloud' if config.cloud_mode else 'Installer Ops Bot' }} <span class="help-tip" tabindex="0" data-tip="L'application installée ouvre le même espace sécurisé. Les calculs et automatisations continuent sur le serveur, même si l'iPhone est fermé.">?</span></h2><p>{{ 'Une seule base pour Windows, Mac et iPhone.' if config.cloud_mode else 'Cette installation locale peut être ajoutée comme application sur cet ordinateur.' }}</p></div><span id="cloudStatusBadge" class="status-badge neutral">Vérification…</span></div>
-            <div class="cloud-control-grid">
-              <div class="cloud-control-item"><small>Synchronisation</small><strong id="cloudModeValue">—</strong><span id="cloudModeHelp">Vérification en cours</span></div>
-              <div class="cloud-control-item"><small>Mises à jour</small><strong id="cloudUpdateValue">—</strong><span>La prochaine version remplace l'ancienne sans réinstallation.</span></div>
-              <div class="cloud-control-item"><small>Sauvegardes</small><strong id="cloudBackupValue">—</strong><span id="cloudBackupHelp">Protection de la base</span></div>
-            </div>
-            <div class="cloud-actions">
-              <button id="installAppButton" class="btn btn-primary" type="button">Installer l'application</button>
-              <button id="createBackupButton" class="btn btn-secondary" type="button">Créer une sauvegarde</button>
-              <button id="showBackupsButton" class="btn btn-ghost" type="button">Voir les sauvegardes</button>
-              {% if config.cloud_mode %}<button id="logoutButton" class="btn btn-ghost danger-text" type="button">Se déconnecter</button>{% endif %}
-            </div>
-            <div id="installHelp" class="install-help">Sur iPhone : ouvrez le site dans Safari, touchez Partager, puis « Sur l'écran d'accueil ».</div>
-          </article>
-
-          <article class="panel settings-card full-card">
-            <div class="panel-head"><div><span class="panel-kicker">RISK ENGINE</span><h2>Marges & sécurité</h2></div><span class="status-badge good">Actif</span></div>
-            <form id="riskSettingsForm" class="form-grid compact-form">
-              <label>Frais eBay estimés (%)<input name="ebay_fee_percent" type="number" step="0.1" min="0"></label>
-              <label>Publicité estimée (%)<input name="ad_rate_percent" type="number" step="0.1" min="0"></label>
-              <label>Frais fixes (€)<input name="fixed_fee" type="number" step="0.01" min="0"></label>
-              <label>Réserve retours (%)<input name="return_reserve_percent" type="number" step="0.1" min="0"></label>
-              <label>Marge minimum (%)<input name="min_margin_percent" type="number" step="0.1" min="0"></label>
-              <label>Profit minimum (€)<input name="min_profit_eur" type="number" step="0.1" min="0"></label>
-              <label>Stock minimum<input name="min_stock" type="number" step="1" min="0"></label>
-              <label>Délai max (jours)<input name="max_shipping_days" type="number" step="1" min="0"></label>
-              <label class="full">Hausse prix fournisseur max (%)<input name="max_supplier_price_jump_percent" type="number" step="0.1" min="0"></label>
-              <div class="full form-actions"><button class="btn btn-secondary" type="submit">Sauvegarder les règles</button></div>
-            </form>
-          </article>
-
-          <article class="panel settings-card full-card">
-            <div class="panel-head"><div><span class="panel-kicker">DIAGNOSTIC</span><h2>État du système <span class="help-tip" tabindex="0" data-tip="Le rapport contient uniquement des états techniques et des compteurs. Il exclut les clés, jetons, clients, commandes, messages et titres produits.">?</span></h2><p>Téléchargez un rapport lisible et sûr à transmettre en cas de problème.</p></div><div class="panel-actions"><button id="refreshDiagnostic" class="btn btn-ghost">Actualiser</button><button id="exportDiagnostic" class="btn btn-primary">↓ Exporter le diagnostic sécurisé</button></div></div>
-            <div id="systemDiagnostic" class="diagnostic-grid"></div>
-            <div class="diagnostic-privacy"><span>✓</span><div><strong>Aucun secret exporté</strong><p>Mots de passe, clés API, jetons eBay/CJ, données clients, références de commandes et contenus privés sont volontairement absents.</p></div></div>
-          </article>
+        <div class="section-head"><span class="eyebrow">CONNEXIONS</span><h1>eBay + CJ</h1><p>Seulement les deux connexions nécessaires au workflow actif.</p></div>
+        <div class="two-col">
+          <article class="panel connection-simple"><span class="panel-kicker">CANAL DE VENTE</span><h2>eBay US</h2><p id="ebayConnectionText" class="muted">Vérification…</p><button class="btn btn-ghost" type="button" data-action="connect-ebay">Configurer eBay</button></article>
+          <article class="panel connection-simple"><span class="panel-kicker">FOURNISSEUR</span><h2>CJ Dropshipping</h2><p id="cjConnectionText" class="muted">Vérification…</p><button class="btn btn-ghost" type="button" data-action="configure-cj">Configurer CJ</button></article>
         </div>
       </section>
     </main>
   </div>
 </div>
 
-<div id="toast" class="toast" role="status"></div>
-<div id="modal" class="modal" aria-hidden="true">
-  <div class="modal-backdrop" data-close-modal></div>
-  <div class="modal-card" role="dialog" aria-modal="true">
-    <div class="modal-head"><div><span id="modalKicker" class="panel-kicker"></span><h2 id="modalTitle">Détail</h2></div><button class="icon-btn" data-close-modal aria-label="Fermer">×</button></div>
-    <div id="modalBody" class="modal-body"></div>
-  </div>
-</div>
-
-<script src="/static/app.js?v={{ version }}"></script>
+<div id="toast" class="simple-toast" role="status" aria-live="polite"></div>
+<script src="/static/simple_ui.js?v={{ version }}" defer></script>
 </body>
 </html>
