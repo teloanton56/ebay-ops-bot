@@ -63,8 +63,8 @@ def test_guided_supplier_ui_explains_us_and_china_route_state():
     source = read("app/static/simple_ui.js")
     assert "Entrepôt US prioritaire" in dashboard
     assert "Chine uniquement" in dashboard
-    assert "Calculer le coût livré US" in source
-    assert "Destination" in source and "US" in source
+    assert "Analyser + importer" in source
+    assert "destination_country: 'US'" in source
 
 
 def test_current_version_and_cache_include_guided_landed_cost_ui():
