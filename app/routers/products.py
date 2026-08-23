@@ -17,7 +17,7 @@ from app.services.db import (
     set_product_fields,
     upsert_product,
 )
-from app.services.profit import suggest_price
+from app.services.profit import calculate_profit, suggest_price
 from app.services.risk import assess_product
 from app.services.scoring import calculate_product_score
 
@@ -31,6 +31,18 @@ def _active_us_product(product: dict) -> bool:
     )
 
 
+def _fee_model() -> dict:
+    s = get_settings()
+    return {
+        "ebay_fee_percent": s.default_ebay_fee_percent,
+        "promoted_listings_percent": s.default_ad_rate_percent,
+        "return_reserve_percent": s.default_return_reserve_percent,
+        "order_fee_low": s.ebay_low_order_fee,
+        "order_fee_standard": s.ebay_standard_order_fee,
+        "currency": "USD",
+    }
+
+
 def _with_live_scores(product: dict, suppliers: dict[int, dict] | None = None) -> dict:
     supplier_map = suppliers or {row["id"]: row for row in list_suppliers()}
     supplier = supplier_map.get(product.get("supplier_id"))
@@ -38,6 +50,8 @@ def _with_live_scores(product: dict, suppliers: dict[int, dict] | None = None) -
         **product,
         "risk": assess_product(product, supplier),
         "product_score": calculate_product_score(product, supplier),
+        "profit": calculate_profit(product),
+        "fee_model": _fee_model(),
     }
 
 
@@ -121,6 +135,10 @@ class SupplierOfferIn(BaseModel):
     image_url: str = Field(default="", max_length=1000)
 
 
+class SeoOptimizeIn(BaseModel):
+    market_keywords: list[str] = Field(default_factory=list, max_length=12)
+
+
 @router.get("")
 def products():
     suppliers = {row["id"]: row for row in list_suppliers()}
@@ -142,7 +160,7 @@ def create_product(payload: ProductIn):
 def create_from_supplier_offer(_: SupplierOfferIn):
     raise HTTPException(
         410,
-        "v0.23 utilise uniquement le flux CJ vérifié. Ajoutez le produit depuis Fournisseurs, Margin Hunter ou Spy eBay Shop.",
+        "v0.25 utilise uniquement le flux CJ vérifié. Ajoutez le produit depuis Radar US / CJ.",
     )
 
 
@@ -202,13 +220,56 @@ def price_suggestion(product_id: int):
     return result
 
 
+@router.get("/{product_id}/margin")
+def margin_simulator(product_id: int, sale_price: float | None = None):
+    product = get_product(product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    if not _active_us_product(product):
+        raise HTTPException(409, "Simulateur disponible uniquement pour eBay US / USD")
+    return {
+        "profit": calculate_profit(product, sale_price),
+        "fee_model": _fee_model(),
+        "marketplace": "EBAY_US",
+        "currency": "USD",
+        "includes": ["CJ product", "CJ shipping", "eBay final value fee", "Promoted Listings reserve", "returns reserve", "per-order fee"],
+    }
+
+
+@router.post("/{product_id}/optimize-ebay")
+def optimize_ebay(product_id: int, payload: SeoOptimizeIn):
+    from app.services.listing_generator import generate_description, optimize_title
+
+    product = get_product(product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    if not _active_us_product(product):
+        raise HTTPException(409, "SEO disponible uniquement pour eBay US / USD")
+    keywords = [str(value).strip() for value in payload.market_keywords if str(value).strip()]
+    optimized = optimize_title(product["title"], market_keywords=keywords)
+    data = dict(product)
+    data["title"] = optimized
+    data["description"] = generate_description({**product, "title": optimized})
+    for key in ("id", "created_at", "updated_at", "previous_supplier_cost"):
+        data.pop(key, None)
+    pid = upsert_product(data)
+    out = _with_live_scores(get_product(pid))
+    return {
+        "product": out,
+        "optimized_title": optimized,
+        "market_keywords": keywords,
+        "keyword_source": "eBay US observed/relevant terms",
+        "note": "Le bot n'invente pas de volume de recherche exact.",
+    }
+
+
 @router.post("/{product_id}/prepare-ebay")
 def prepare_ebay(product_id: int):
     product = get_product(product_id)
     if not product:
         raise HTTPException(404, "Product not found")
     if not _active_us_product(product):
-        raise HTTPException(409, "Seuls les produits eBay US / USD peuvent être préparés dans v0.23.")
+        raise HTTPException(409, "Seuls les produits eBay US / USD peuvent être préparés dans v0.25.")
     risk = assess_product(product)
     if not risk["pass"]:
         raise HTTPException(400, "Le Risk Engine bloque cette préparation : " + " ; ".join(risk["blocks"]))
@@ -230,7 +291,7 @@ def opportunity_inbox():
         "cj_candidates": list_cj_candidates()[:12],
         "supplier_count": 1,
         "measured_only": True,
-        "note": "YouTube/TikTok retirés. Utilisez Radar eBay US, Margin Hunter ou Spy eBay Shop.",
+        "note": "Utilisez Radar eBay US puis CJ Dropshipping.",
     }
 
 
@@ -257,7 +318,7 @@ async def import_csv_for_supplier(supplier_id: int, file: UploadFile = File(...)
     if not supplier:
         raise HTTPException(404, "Fournisseur introuvable")
     if str(supplier.get("provider_code") or "").lower() != "cj":
-        raise HTTPException(410, "v0.23 n'utilise que CJ comme fournisseur actif")
+        raise HTTPException(410, "v0.25 n'utilise que CJ comme fournisseur actif")
     raw = await file.read()
     return _import_csv_text(raw.decode("utf-8-sig"), supplier_id)
 
@@ -269,21 +330,4 @@ def load_demo():
 
 @router.post("/{product_id}/generate-listing")
 def generate_listing(product_id: int):
-    from app.services.listing_generator import generate_description, optimize_title
-
-    p = get_product(product_id)
-    if not p:
-        raise HTTPException(404, "Product not found")
-    if not _active_us_product(p):
-        raise HTTPException(410, "Re-sourcer ce produit pour eBay US avant de générer une annonce")
-    data = dict(p)
-    data["title"] = optimize_title(p["title"])
-    data["description"] = generate_description(p)
-    data["marketplace_id"] = "EBAY_US"
-    data["currency"] = "USD"
-    for key in ("id", "created_at", "updated_at", "previous_supplier_cost"):
-        data.pop(key, None)
-    pid = upsert_product(data)
-    out = get_product(pid)
-    scored = _with_live_scores(out)
-    return {"product": out, "risk": scored["risk"], "product_score": scored["product_score"]}
+    return optimize_ebay(product_id, SeoOptimizeIn())
