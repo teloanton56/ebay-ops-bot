@@ -1,33 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">Ops Bot geometric knot</title>
-  <desc id="desc">Three interlocking rounded loops around a central hexagon.</desc>
-  <defs>
-    <linearGradient id="bg" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1d4ed8"/>
-      <stop offset="0.52" stop-color="#5b21b6"/>
-      <stop offset="1" stop-color="#0f766e"/>
-    </linearGradient>
-    <linearGradient id="ribbon" x1="116" y1="96" x2="410" y2="406" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ffffff"/>
-      <stop offset="0.48" stop-color="#dbeafe"/>
-      <stop offset="1" stop-color="#a7f3d0"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(256 238) rotate(90) scale(218)" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ffffff" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="soft-shadow" x="70" y="58" width="372" height="396" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#020617" flood-opacity="0.34"/>
-    </filter>
-  </defs>
-  <rect width="512" height="512" rx="116" fill="#0b1220"/>
-  <rect x="24" y="24" width="464" height="464" rx="98" fill="url(#bg)"/>
-  <circle cx="256" cy="256" r="210" fill="url(#glow)"/>
-  <g fill="none" stroke="url(#ribbon)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" filter="url(#soft-shadow)">
-    <path d="M256 104C326 104 382 160 382 230C382 300 326 356 256 356C186 356 130 300 130 230C130 160 186 104 256 104Z"/>
-    <path d="M256 104C326 104 382 160 382 230C382 300 326 356 256 356C186 356 130 300 130 230C130 160 186 104 256 104Z" transform="rotate(120 256 256)" opacity="0.94"/>
-    <path d="M256 104C326 104 382 160 382 230C382 300 326 356 256 356C186 356 130 300 130 230C130 160 186 104 256 104Z" transform="rotate(240 256 256)" opacity="0.88"/>
-  </g>
-  <polygon points="256,210 296,233 296,279 256,302 216,279 216,233" fill="#0b1220" stroke="#99f6e4" stroke-width="10" stroke-linejoin="round"/>
-  <circle cx="256" cy="256" r="8" fill="#ffffff"/>
+  <title id="title">Ops Bot mark</title>
+  <desc id="desc">Minimal forward bolt symbol for fast product decisions.</desc>
+  <rect width="512" height="512" rx="122" fill="#0b1220"/>
+  <path d="M292 78 132 274h105l-25 160 168-224H273L292 78Z" fill="#35e6a1"/>
 </svg>

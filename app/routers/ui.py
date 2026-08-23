@@ -12,7 +12,7 @@ from app.services.diagnostics import build_safe_diagnostic
 from app.services.risk import assess_product
 
 router = APIRouter(prefix="/api/ui", tags=["UI"])
-VERSION = "0.24.0"
+VERSION = "0.25.0"
 
 
 def _active_products() -> list[dict]:

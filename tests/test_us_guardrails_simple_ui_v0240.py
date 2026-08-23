@@ -14,6 +14,10 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def current_version() -> str:
+    return read("app/main.py").split('VERSION = "', 1)[1].split('"', 1)[0]
+
+
 def test_cj_freight_default_destination_is_us_and_non_us_is_blocked(monkeypatch):
     signature = inspect.signature(CJClient.freight_options)
     assert signature.parameters["destination_country"].default == "US"
@@ -64,7 +68,7 @@ def test_dashboard_is_physically_us_only_not_runtime_hidden():
 def test_main_loads_only_the_new_guided_frontend():
     main = read("app/main.py")
     dashboard = read("app/templates/dashboard.html")
-    assert 'VERSION = "0.24.0"' in main
+    assert 'VERSION = "' in main
     assert "simple_ui.js" in dashboard
     assert "simple_ui.css" in dashboard
     for retired in (
@@ -75,11 +79,12 @@ def test_main_loads_only_the_new_guided_frontend():
         assert retired not in dashboard
 
 
-def test_pwa_caches_only_active_v024_frontend_assets():
+def test_pwa_caches_only_active_frontend_assets():
     worker = read("app/static/service-worker.js")
-    assert "opsbot-v0.24.0-shell" in worker
-    assert "/static/simple_ui.css?v=0.24.0" in worker
-    assert "/static/simple_ui.js?v=0.24.0" in worker
+    version = current_version()
+    assert f"opsbot-v{version}-shell" in worker
+    assert f"/static/simple_ui.css?v={version}" in worker
+    assert f"/static/simple_ui.js?v={version}" in worker
     for retired in (
         "provider_cleanup.js", "workflow_cleanup.js", "product_research.js",
         "supplier_flow_v2.js", "margin_hunter.js", "shop_spy.js", "catalog_sync.js",
@@ -90,7 +95,7 @@ def test_pwa_caches_only_active_v024_frontend_assets():
 def test_ui_status_exposes_market_currency_and_destination_guardrail():
     ui = read("app/routers/ui.py")
     main = read("app/main.py")
-    assert 'VERSION = "0.24.0"' in ui
+    assert f'VERSION = "{current_version()}"' in ui
     assert '"marketplace": "EBAY_US"' in ui
     assert '"currency": "USD"' in ui
     assert '"destination_country": "US"' in ui
