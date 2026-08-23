@@ -1,20 +1,39 @@
 from html import escape
+import re
 
 
-def optimize_title(title: str, max_len: int = 80) -> str:
-    words = []
-    seen = set()
-    for raw in title.replace("|", " ").replace("-", " ").split():
-        key = raw.lower().strip(",.;:/")
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        words.append(raw.strip())
+STOP_WORDS = {
+    "the", "a", "an", "and", "or", "for", "with", "of", "to", "in", "on", "by",
+    "new", "hot", "sale", "best", "quality", "dropshipping", "product",
+}
+
+
+def _tokens(value: str) -> list[str]:
+    return [token for token in re.findall(r"[A-Za-z0-9]+(?:[+'-][A-Za-z0-9]+)?", value or "") if token]
+
+
+def optimize_title(title: str, max_len: int = 80, market_keywords: list[str] | None = None) -> str:
+    """Build a compact eBay US title from verified product wording + observed market terms.
+
+    `market_keywords` are relevance hints observed in the current eBay US workflow. They are
+    not presented as exact search-volume data.
+    """
+    words: list[str] = []
+    seen: set[str] = set()
+    sources = list(market_keywords or []) + [title]
+    for source in sources:
+        for raw in _tokens(source):
+            key = raw.lower().strip(",.;:/")
+            if not key or key in seen or key in STOP_WORDS:
+                continue
+            seen.add(key)
+            words.append(raw.strip())
+
     out = ""
     for word in words:
         candidate = (out + " " + word).strip()
         if len(candidate) > max_len:
-            break
+            continue
         out = candidate
     return out or title[:max_len]
 
