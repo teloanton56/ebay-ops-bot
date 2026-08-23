@@ -72,27 +72,30 @@ def test_all_inclusive_margin_is_exposed_on_active_products():
     assert simulation["fee_model"]["promoted_listings_percent"] >= 0
 
 
-def test_ebay_seo_uses_observed_terms_without_claiming_search_volume():
+def test_ebay_seo_uses_only_relevant_market_hints_without_replacing_identity():
     title = optimize_title(
         "Wireless Car Charger New Product",
-        market_keywords=["magnetic wireless car charger", "car phone mount"],
+        market_keywords=["magnetic wireless car charger", "Lasko pedestal fan S16200"],
     )
     assert len(title) <= 80
-    assert title.startswith("magnetic wireless car charger")
+    assert title.startswith("Wireless Car Charger")
+    assert "magnetic" in title.lower()
+    assert "Lasko" not in title
+    assert "S16200" not in title
     assert "Product" not in title
 
     products_router = read("app/routers/products.py")
     ui = read("app/static/simple_ui.js")
     assert '/{product_id}/optimize-ebay' in products_router
-    assert "eBay US observed/relevant terms" in products_router
-    assert "n'invente pas de volume de recherche exact" in products_router
+    assert "eBay US relevant query only" in products_router
+    assert "aucun titre concurrent complet n'est copié" in products_router
     assert "Optimiser pour eBay" in ui
 
 
-def test_pwa_and_ui_versions_follow_v025():
+def test_pwa_and_ui_versions_follow_v0252():
     main = read("app/main.py")
     worker = read("app/static/service-worker.js")
-    assert 'VERSION = "0.25.0"' in main
-    assert "opsbot-v0.25.0-shell" in worker
-    assert "/static/simple_ui.js?v=0.25.0" in worker
-    assert "/static/simple_ui.css?v=0.25.0" in worker
+    assert 'VERSION = "0.25.2"' in main
+    assert "opsbot-v0.25.2-shell" in worker
+    assert "/static/simple_ui.js?v=0.25.2" in worker
+    assert "/static/simple_ui.css?v=0.25.2" in worker
