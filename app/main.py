@@ -20,7 +20,7 @@ from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
 VERSION = "0.25.0"
-BRAND_REV = "ops-knot-1"
+BRAND_REV = "ops-bolt-1"
 
 
 @asynccontextmanager
