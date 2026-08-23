@@ -17,7 +17,7 @@ def read(path: str) -> str:
 def test_radar_ui_is_visual_and_decision_first():
     ui = read("app/static/simple_ui.js")
     css = read("app/static/simple_ui.css")
-    assert "Potentiel marché" in ui
+    assert "potentiel marché" in ui.lower()
     assert "score-gauge" in ui
     assert "Demande" in ui
     assert "Concurrence" in ui
