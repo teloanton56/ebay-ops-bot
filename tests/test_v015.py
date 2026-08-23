@@ -33,6 +33,7 @@ def test_product_research_logic_remains_backend_but_guided_assets_are_current():
     main = Path("app/main.py").read_text(encoding="utf-8")
     dashboard = Path("app/templates/dashboard.html").read_text(encoding="utf-8")
     worker = Path("app/static/service-worker.js").read_text(encoding="utf-8")
+    script = Path("app/static/simple_ui.js").read_text(encoding="utf-8")
     match = re.search(r'^VERSION = "([^"]+)"$', main, re.MULTILINE)
     assert match is not None
     version = match.group(1)
@@ -41,4 +42,5 @@ def test_product_research_logic_remains_backend_but_guided_assets_are_current():
     assert f"opsbot-v{version}-shell" in worker
     assert f"simple_ui.js?v={version}" in worker
     assert "Radar eBay US" in dashboard
-    assert "Chercher sur CJ" in Path("app/static/simple_ui.js").read_text(encoding="utf-8")
+    assert "Vérifier la marge chez CJ" in script
+    assert "score-gauge" in script
