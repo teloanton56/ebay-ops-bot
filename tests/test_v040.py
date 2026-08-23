@@ -136,10 +136,11 @@ def test_source_statuses_and_future_rfq_copy_are_us_focused():
     assert "DDP" in message
 
 
-def test_active_shell_identifies_v024_us_cj_mode():
+def test_active_shell_identifies_current_us_cj_mode():
     html = TestClient(app).get("/").text
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
-    assert app.version == "0.24.0"
+    version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
+    assert app.version == version
     assert "eBay US" in html
     assert "CJ Dropshipping" in html
     assert "EBAY_US_CJ_ONLY" in main
