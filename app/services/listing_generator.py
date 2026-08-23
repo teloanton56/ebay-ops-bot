@@ -41,7 +41,7 @@ def _dedupe_tokens(sources: list[str]) -> list[str]:
     return words
 
 
-def _safe_market_prefix(identity_keys: set[str], market_keywords: list[str] | None) -> list[str]:
+def _safe_market_suffix(identity_keys: set[str], market_keywords: list[str] | None) -> list[str]:
     """Return at most one short, relevant market phrase.
 
     Full competitor titles are rejected. Unknown brand/model tokens are also
@@ -93,8 +93,12 @@ def optimize_title(
     identity_sources = [title, variant_name, category_name, *aspect_sources]
     identity_words = _dedupe_tokens(identity_sources)
     identity_keys = {_key(word) for word in identity_words}
-    prefix = _safe_market_prefix(identity_keys, market_keywords)
-    ordered = _dedupe_tokens([" ".join(prefix), *identity_sources])
+    market_suffix = _safe_market_suffix(identity_keys, market_keywords)
+
+    # Identity comes first. This guarantees that two different CJ products cannot
+    # be replaced by the same competitor title merely because the same Radar was
+    # open when the user clicked the SEO button.
+    ordered = _dedupe_tokens([*identity_sources, " ".join(market_suffix)])
 
     out = ""
     for word in ordered:
