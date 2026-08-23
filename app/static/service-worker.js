@@ -1,10 +1,10 @@
 const SHELL = 'opsbot-v0.25.0-shell';
 const ASSETS = [
   '/static/app.css?v=0.25.0',
-  '/static/brand.css?v=ops-knot-1',
+  '/static/brand.css?v=ops-bolt-1',
   '/static/simple_ui.css?v=0.25.0',
   '/static/simple_ui.js?v=0.25.0',
-  '/static/app-icon.svg?v=ops-knot-1',
+  '/static/app-icon.svg?v=ops-bolt-1',
   '/offline'
 ];
 
