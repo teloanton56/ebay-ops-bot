@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">Ops Bot mark</title>
-  <desc id="desc">Minimal forward bolt symbol for fast product decisions.</desc>
+  <title id="title">Ops Bot forward mark</title>
+  <desc id="desc">Minimal curved arrow symbol representing fast product decisions and growth.</desc>
   <rect width="512" height="512" rx="122" fill="#0b1220"/>
-  <path d="M292 78 132 274h105l-25 160 168-224H273L292 78Z" fill="#35e6a1"/>
+  <path d="M84 336C176 333 272 297 352 229C380 205 402 179 420 150" fill="none" stroke="#35e6a1" stroke-width="58" stroke-linecap="round"/>
+  <path d="M337 135 451 120 417 236Z" fill="#35e6a1"/>
 </svg>

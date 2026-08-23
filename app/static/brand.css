@@ -2,7 +2,7 @@
   color:transparent!important;
   text-indent:-9999px;
   overflow:hidden;
-  background:url('/static/app-icon.svg?v=ops-bolt-1') center/cover no-repeat!important;
+  background:url('/static/app-icon.svg?v=ops-swoosh-1') center/cover no-repeat!important;
   box-shadow:0 10px 24px rgba(11,18,32,.22)!important;
   isolation:isolate;
 }
