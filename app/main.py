@@ -19,7 +19,7 @@ from app.services.ebay import EbayClient
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.25.1"
+VERSION = "0.25.0"
 BRAND_REV = "ops-swoosh-1"
 
 
@@ -121,7 +121,11 @@ def dashboard(request: Request):
 
 @app.get("/manifest.webmanifest")
 def manifest():
-    return FileResponse("app/static/manifest.webmanifest", media_type="application/manifest+json")
+    return FileResponse(
+        "app/static/manifest.webmanifest",
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/service-worker.js")
