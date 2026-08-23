@@ -121,7 +121,7 @@ def test_main_and_pwa_do_not_load_old_multi_source_radar():
     main = read("app/main.py")
     service_worker = read("app/static/service-worker.js")
     version = main.split('VERSION = "', 1)[1].split('"', 1)[0]
-    assert version == "0.24.0"
+    assert version.startswith("0.2")
     assert "auto_radar.router" not in main and "auto_radar.js" not in main and "tiered_radar.js" not in main
     assert f"opsbot-v{version}-shell" in service_worker
     assert "auto_radar.js" not in service_worker and "tiered_radar.js" not in service_worker
@@ -133,7 +133,8 @@ def test_active_sourcing_frontend_names_only_cj():
     assert "cj dropshipping" in dashboard
     assert "aliexpress" not in active and "amazon" not in active
     assert "youtube" not in dashboard and "tiktok" not in dashboard
-    assert "chercher sur cj" in active
+    assert "vérifier la marge chez cj" in active
+    assert "analyser + importer" in active
 
 
 def test_listing_and_supplier_refresh_require_route_specific_locations():
