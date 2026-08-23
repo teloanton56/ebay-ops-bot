@@ -111,7 +111,7 @@ async def cj_products(
     # Search globally so products with either US or CN stock can be discovered;
     # exact route stock is verified by cj_landed before margin decisions.
     if country_code and country_code.upper() not in {"US", "CN"}:
-        raise HTTPException(400, "v0.23 autorise uniquement les entrepôts CJ US et CN")
+        raise HTTPException(400, "Le mode actif autorise uniquement les entrepôts CJ US et CN")
     try:
         requested_size = min(max(size, 1), 50)
         clean_query = q.strip()
@@ -177,7 +177,7 @@ async def analyze_candidate(candidate_id: int, payload: CJAnalyzeIn):
     if not candidate:
         raise HTTPException(404, "Sélection CJ introuvable")
     if payload.destination_country.upper() != "US":
-        raise HTTPException(400, "v0.23 calcule uniquement la livraison vers les États-Unis")
+        raise HTTPException(400, "Le mode actif calcule uniquement la livraison vers les États-Unis")
 
     client = CJClient()
     try:
@@ -195,8 +195,13 @@ async def analyze_candidate(candidate_id: int, payload: CJAnalyzeIn):
             min_profit=float(requirements["min_profit"]),
         )
         analysis = {
+            "product_name": landed.get("product_name") or candidate.get("name") or "Produit CJ",
+            "variant_name": landed.get("variant_name") or "",
+            "category_name": candidate.get("category_name") or "",
+            "image_url": landed.get("image_url") or candidate.get("image_url") or "",
             "variant_id": landed["variant_id"],
             "variant_sku": landed["variant_sku"],
+            "verified_stock": int(landed.get("stock") or 0),
             "source_country": landed["warehouse"],
             "destination_country": "US",
             "shipping": {
@@ -243,18 +248,20 @@ def candidate_to_product(candidate_id: int):
     supplier_id = ensure_provider_supplier("cj", "CJ Dropshipping", "US")
     sku = str(analysis.get("variant_sku") or candidate.get("sku") or f"CJ-{candidate['cj_pid']}")[:50]
     warehouse = str(analysis.get("source_country") or "").upper()
+    source_title = str(analysis.get("product_name") or candidate.get("name") or "Produit CJ").strip()
+    source_image = str(analysis.get("image_url") or candidate.get("image_url") or "").strip()
     product_id = upsert_product({
         "supplier_sku": sku,
-        "title": candidate["name"],
+        "title": source_title,
         "description": f"CJ Dropshipping · {'US warehouse' if warehouse == 'US' else 'China → US'}. Données revalidées avant publication.",
         "supplier_cost": float(analysis.get("supplier_cost_usd") or 0),
         "shipping_cost": float(analysis.get("shipping_cost_usd") or 0),
-        "stock": int(candidate.get("stock") or 0),
+        "stock": int(analysis.get("verified_stock") or candidate.get("stock") or 0),
         "shipping_days": int(str((analysis.get("shipping") or {}).get("delivery_days") or "0").split()[0] or 0),
         "target_price": analysis.get("suggested_price_usd"),
         "marketplace_id": "EBAY_US",
         "currency": "USD",
-        "images": [candidate["image_url"]] if candidate.get("image_url") else [],
+        "images": [source_image] if source_image else [],
         "aspects": {},
         "supplier_id": supplier_id,
         "product_status": "À tester",
