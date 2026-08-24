@@ -35,7 +35,7 @@ def _write_env(updates: dict[str, str]) -> None:
         "EBAY_RUNAME", "EBAY_MARKETPLACE_ID", "EBAY_CURRENCY", "EBAY_WRITE_ENABLED", "EBAY_PUBLISH_ENABLED",
         "EBAY_CJ_US_LOCATION_KEY", "EBAY_CJ_CN_LOCATION_KEY",
         "DEFAULT_EBAY_FEE_PERCENT", "DEFAULT_AD_RATE_PERCENT", "EBAY_LOW_ORDER_FEE", "EBAY_STANDARD_ORDER_FEE",
-        "DEFAULT_RETURN_RESERVE_PERCENT", "MIN_MARGIN_PERCENT", "MIN_PROFIT_EUR", "MIN_STOCK", "MAX_SHIPPING_DAYS",
+        "DEFAULT_RETURN_RESERVE_PERCENT", "MIN_MARGIN_PERCENT", "MIN_PROFIT_USD", "MIN_STOCK", "MAX_SHIPPING_DAYS",
         "CJ_US_MIN_MARGIN_PERCENT", "CJ_US_MIN_PROFIT_USD", "CJ_US_MIN_STOCK", "CJ_US_MAX_SHIPPING_DAYS",
         "CJ_CN_MIN_MARGIN_PERCENT", "CJ_CN_MIN_PROFIT_USD", "CJ_CN_MIN_STOCK", "CJ_CN_MAX_SHIPPING_DAYS",
         "MAX_SUPPLIER_PRICE_JUMP_PERCENT",
@@ -76,8 +76,8 @@ class EbaySettingsIn(BaseModel):
     client_secret: str | None = None
     runame: str | None = None
     environment: Literal["sandbox", "production"] = "sandbox"
-    marketplace_id: str = "EBAY_US"
-    currency: str = "USD"
+    marketplace_id: Literal["EBAY_US"] = "EBAY_US"
+    currency: Literal["USD"] = "USD"
 
 
 class RiskSettingsIn(BaseModel):
@@ -86,8 +86,7 @@ class RiskSettingsIn(BaseModel):
     fixed_fee: float = Field(ge=0, le=50)
     return_reserve_percent: float = Field(ge=0, le=50)
     min_margin_percent: float = Field(ge=0, le=100)
-    # Legacy field name kept because the current form posts it; value is USD in v0.23.
-    min_profit_eur: float = Field(ge=0)
+    min_profit_usd: float = Field(ge=0)
     min_stock: int = Field(ge=0)
     max_shipping_days: int = Field(ge=0, le=90)
     max_supplier_price_jump_percent: float = Field(ge=0, le=500)
@@ -159,7 +158,7 @@ def get_risk_settings():
         "fixed_fee": settings.ebay_standard_order_fee,
         "return_reserve_percent": settings.default_return_reserve_percent,
         "min_margin_percent": settings.min_margin_percent,
-        "min_profit_eur": settings.min_profit_amount,
+        "min_profit_usd": settings.min_profit_amount,
         "min_stock": settings.min_stock,
         "max_shipping_days": settings.max_shipping_days,
         "max_supplier_price_jump_percent": settings.max_supplier_price_jump_percent,
@@ -174,11 +173,10 @@ def save_risk_settings(payload: RiskSettingsIn):
     _write_env({
         "DEFAULT_EBAY_FEE_PERCENT": str(payload.ebay_fee_percent),
         "DEFAULT_AD_RATE_PERCENT": str(payload.ad_rate_percent),
-        "DEFAULT_FIXED_FEE": str(payload.fixed_fee),
         "EBAY_STANDARD_ORDER_FEE": str(payload.fixed_fee),
         "DEFAULT_RETURN_RESERVE_PERCENT": str(payload.return_reserve_percent),
         "MIN_MARGIN_PERCENT": str(payload.min_margin_percent),
-        "MIN_PROFIT_EUR": str(payload.min_profit_eur),
+        "MIN_PROFIT_USD": str(payload.min_profit_usd),
         "MIN_STOCK": str(payload.min_stock),
         "MAX_SHIPPING_DAYS": str(payload.max_shipping_days),
         "MAX_SUPPLIER_PRICE_JUMP_PERCENT": str(payload.max_supplier_price_jump_percent),

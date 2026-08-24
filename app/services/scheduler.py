@@ -3,7 +3,7 @@ from app.services.analyzer import analyze_catalog
 from app.services.db import get_listing_for_product, list_products
 from app.services.ebay import EbayClient
 from app.services.risk import assess_product
-from app.services.supplier_refresh import SupplierRefreshError, refresh_product_from_supplier
+from app.services.supplier_refresh import SupplierRefreshError, is_verified_cj_product, refresh_product_from_supplier
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -20,7 +20,7 @@ async def scheduled_sync():
         return
     client = EbayClient()
     for product in list_products():
-        if product.get("marketplace_id") != "EBAY_US" or product.get("currency") != "USD":
+        if not is_verified_cj_product(product):
             continue
         listing = get_listing_for_product(product["id"])
         if not listing or not listing.get("offer_id"):
@@ -60,7 +60,7 @@ async def scheduled_backup():
 
 
 def reschedule_radar_jobs() -> bool:
-    """Legacy compatibility: v0.23 has no background multi-source Radar jobs."""
+    """Compatibility hook; only eBay US/CJ jobs may be scheduled."""
     return _scheduler is not None
 
 

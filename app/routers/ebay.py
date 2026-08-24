@@ -11,7 +11,7 @@ from app.services.ebay_us_listing import (
     location_key_for_warehouse,
 )
 from app.services.risk import assess_product
-from app.services.supplier_refresh import SupplierRefreshError, refresh_product_from_supplier
+from app.services.supplier_refresh import SupplierRefreshError, is_verified_cj_product, refresh_product_from_supplier
 
 router = APIRouter(prefix="/api/ebay", tags=["eBay US"])
 
@@ -34,10 +34,12 @@ def _publication_blocks(
     merchant_location_key: str = "",
 ) -> list[str]:
     blocks = list(risk.get("blocks") or [])
+    if not is_verified_cj_product(product):
+        blocks.append("Produit hors flux CJ vérifié")
     if (product.get("marketplace_id") or "") != "EBAY_US":
-        blocks.append("Marketplace invalide : v0.23 publie uniquement sur eBay US")
+        blocks.append("Marketplace invalide : le bot publie uniquement sur eBay US")
     if (product.get("currency") or "") != "USD":
-        blocks.append("Devise invalide : v0.23 publie uniquement en USD")
+        blocks.append("Devise invalide : le bot publie uniquement en USD")
     if not product.get("category_id"):
         blocks.append("Catégorie eBay US obligatoire avant publication")
     if not product.get("images"):
@@ -129,14 +131,6 @@ async def policies():
         return await EbayClient().get_policies()
     except EbayError as exc:
         fail(exc)
-
-
-@router.post("/inventory-location")
-async def inventory_location():
-    raise HTTPException(
-        410,
-        "v0.23 utilise deux emplacements eBay distincts. Configurez EBAY_CJ_US_LOCATION_KEY et EBAY_CJ_CN_LOCATION_KEY avec des emplacements réels.",
-    )
 
 
 @router.get("/orders")

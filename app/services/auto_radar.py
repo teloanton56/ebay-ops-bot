@@ -2,9 +2,8 @@
 
 The engine never invents search volume or competitor conversion. It discovers
 candidate product phrases from official eBay category and best-selling data,
-measures each candidate through the Browse API, optionally confirms the best
-candidates with connected social/marketplace sources, then stores explainable
-opportunities and creates persistent in-app alerts.
+measures each candidate through the eBay Browse API, then stores explainable
+eBay US opportunities and creates persistent in-app alerts.
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ from typing import Any, Awaitable
 from urllib.parse import quote
 
 from app.config import get_settings
-from app.services.connections import IntegrationError, connection_statuses, scan_connected_sources
 from app.services.db import add_alert, conn, previous_radar_scan, save_radar_scan, utc_now
 from app.services.ebay import EbayClient, EbayError
 
@@ -30,7 +28,6 @@ from app.services.ebay import EbayClient, EbayError
 AUTO_ALERT_THRESHOLD = 75
 MAX_CATEGORIES = 5
 MAX_CANDIDATES = 8
-MAX_SOCIAL_CONFIRMATIONS = 4
 _AUTO_LOCK = asyncio.Lock()
 
 CATEGORY_GROUPS = (
@@ -170,10 +167,9 @@ def _ensure_tables() -> None:
                 competition_score REAL NOT NULL DEFAULT 0,
                 momentum_score REAL NOT NULL DEFAULT 0,
                 market_quality_score REAL NOT NULL DEFAULT 0,
-                social_score REAL NOT NULL DEFAULT 0,
                 total_results INTEGER NOT NULL DEFAULT 0,
                 median_price REAL,
-                currency TEXT NOT NULL DEFAULT 'EUR',
+                currency TEXT NOT NULL DEFAULT 'USD',
                 sellers_sample INTEGER NOT NULL DEFAULT 0,
                 top_seller_share REAL NOT NULL DEFAULT 0,
                 sold_quantity INTEGER,
@@ -183,7 +179,6 @@ def _ensure_tables() -> None:
                 image_url TEXT NOT NULL DEFAULT '',
                 sources_json TEXT NOT NULL DEFAULT '[]',
                 factors_json TEXT NOT NULL DEFAULT '[]',
-                social_json TEXT NOT NULL DEFAULT '{}',
                 payload_json TEXT NOT NULL DEFAULT '{}',
                 first_seen_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
@@ -223,7 +218,6 @@ def _decode_row(row: dict[str, Any]) -> dict[str, Any]:
     for source, target, default in (
         ("sources_json", "sources", []),
         ("factors_json", "factors", []),
-        ("social_json", "social", {}),
         ("payload_json", "payload", {}),
     ):
         raw = result.pop(source, None)
@@ -231,13 +225,17 @@ def _decode_row(row: dict[str, Any]) -> dict[str, Any]:
             result[target] = json.loads(raw or json.dumps(default))
         except (TypeError, json.JSONDecodeError):
             result[target] = default
+    result.pop("social_score", None)
+    result.pop("social_json", None)
     result["dismissed"] = bool(result.get("dismissed"))
     return result
 
 
 def list_auto_opportunities(limit: int = 30, include_dismissed: bool = False) -> list[dict[str, Any]]:
     _ensure_tables()
-    where = "" if include_dismissed else "WHERE dismissed=0"
+    where = "WHERE marketplace='EBAY_US' AND currency='USD'"
+    if not include_dismissed:
+        where += " AND dismissed=0"
     with conn() as database:
         rows = database.execute(
             f"SELECT * FROM radar_opportunities {where} ORDER BY score DESC,last_seen_at DESC LIMIT ?",
@@ -249,7 +247,9 @@ def list_auto_opportunities(limit: int = 30, include_dismissed: bool = False) ->
 def latest_auto_run() -> dict[str, Any] | None:
     _ensure_tables()
     with conn() as database:
-        row = database.execute("SELECT * FROM radar_auto_runs ORDER BY id DESC LIMIT 1").fetchone()
+        row = database.execute(
+            "SELECT * FROM radar_auto_runs WHERE marketplace='EBAY_US' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
     if not row:
         return None
     result = dict(row)
@@ -264,7 +264,8 @@ def dismiss_auto_opportunity(opportunity_id: int) -> bool:
     _ensure_tables()
     with conn() as database:
         return database.execute(
-            "UPDATE radar_opportunities SET dismissed=1 WHERE id=?", (opportunity_id,)
+            "UPDATE radar_opportunities SET dismissed=1 WHERE id=? AND marketplace='EBAY_US' AND currency='USD'",
+            (opportunity_id,),
         ).rowcount > 0
 
 
@@ -285,11 +286,8 @@ def auto_radar_status() -> dict[str, Any]:
         "last_run": latest_auto_run(),
         "opportunity_count": len(opportunities),
         "high_score_count": sum(1 for row in opportunities if float(row.get("score") or 0) >= AUTO_ALERT_THRESHOLD),
-        "method": "EBAY_FIRST_V1",
-        "note": (
-            "Découverte par catégories et signaux eBay officiels. YouTube, TikTok et Etsy ne servent "
-            "qu'à confirmer les meilleurs candidats lorsqu'ils sont connectés."
-        ),
+        "method": "EBAY_US_ONLY_V2",
+        "note": "Découverte fondée uniquement sur les catégories, annonces et signaux officiels eBay US.",
     }
 
 
@@ -474,11 +472,16 @@ def extract_candidate_phrases(browse_rows: list[dict[str, Any]], marketing_rows:
 
 
 async def _measure_candidate(client: EbayClient, candidate: dict[str, Any], marketplace: str) -> dict[str, Any]:
+    if marketplace != "EBAY_US":
+        raise ValueError("La mesure automatique est limitée à eBay US")
     payload = await client.public_request(
         "GET", "/buy/browse/v1/item_summary/search",
         params={"q": candidate["keyword"], "limit": 50}, marketplace_id=marketplace,
     )
-    items = payload.get("itemSummaries") or []
+    items = [
+        row for row in payload.get("itemSummaries") or []
+        if str((row.get("price") or {}).get("currency") or "USD").upper() == "USD"
+    ]
     prices: list[float] = []
     sellers: list[str] = []
     recent = 0
@@ -486,7 +489,8 @@ async def _measure_candidate(client: EbayClient, candidate: dict[str, Any], mark
     fixed = 0
     origins: list[datetime] = []
     for item in items:
-        price = _safe_float((item.get("price") or {}).get("value"))
+        price_block = item.get("price") or {}
+        price = _safe_float(price_block.get("value"))
         if price is not None:
             prices.append(price)
         seller = str((item.get("seller") or {}).get("username") or "").strip()
@@ -526,15 +530,13 @@ async def _measure_candidate(client: EbayClient, candidate: dict[str, Any], mark
     origin_value = detail.get("itemOriginDate") or representative.get("itemOriginDate")
     age_days = _age_days(origin_value)
     sales_velocity = round(sold_quantity / age_days, 3) if sold_quantity is not None and age_days else None
-    currency = next((str((item.get("price") or {}).get("currency") or "") for item in items
-                     if (item.get("price") or {}).get("currency")), "EUR")
     result = {
         "keyword": candidate["keyword"],
         "source": "EBAY_AUTO",
         "marketplace": marketplace,
         "marketplace_name": marketplace,
         "total_results": int(payload.get("total") or len(items)),
-        "currency": currency,
+        "currency": "USD",
         "median_price": round(median(prices), 2) if prices else None,
         "min_price": round(min(prices), 2) if prices else None,
         "max_price": round(max(prices), 2) if prices else None,
@@ -564,63 +566,7 @@ async def _measure_candidate(client: EbayClient, candidate: dict[str, Any], mark
     return result
 
 
-def _social_value(result: dict[str, Any], label: str) -> float:
-    for metric in result.get("metrics") or []:
-        if str(metric.get("label") or "").casefold() == label.casefold():
-            return _safe_float(metric.get("value")) or 0
-    return 0
-
-
-def score_social_confirmation(payload: dict[str, Any] | None) -> tuple[float, list[dict[str, Any]]]:
-    if not payload:
-        return 0.0, []
-    points = 0.0
-    evidence: list[dict[str, Any]] = []
-    for result in payload.get("results") or []:
-        source = str(result.get("source") or "").upper()
-        observed = int(result.get("observed_count") or 0)
-        earned = 0.0
-        detail = ""
-        if source == "YOUTUBE":
-            median_views = _social_value(result, "Vues médianes")
-            best_views = _social_value(result, "Meilleure vidéo")
-            earned += 1 if observed >= 3 else 0
-            earned += 1.5 if observed >= 10 else 0
-            earned += 1.5 if median_views >= 10_000 else 0.5 if median_views >= 2_000 else 0
-            earned += 1 if best_views >= 100_000 else 0.5 if best_views >= 20_000 else 0
-            detail = f"{observed} vidéo(s), médiane {int(median_views):,} vues".replace(",", " ")
-            earned = min(earned, 5)
-        elif source == "TIKTOK":
-            active = _social_value(result, "Publicités actives")
-            reach = _social_value(result, "Portée maximale")
-            earned += 2 if observed >= 5 else 1 if observed >= 1 else 0
-            earned += 2 if active >= 3 else 1 if active >= 1 else 0
-            earned += 3 if reach >= 100_000 else 2 if reach >= 20_000 else 1 if reach >= 2_000 else 0
-            detail = f"{observed} publicité(s), {int(active)} active(s), portée max {int(reach):,}".replace(",", " ")
-            earned = min(earned, 7)
-        elif source == "ETSY":
-            favorites = max((_safe_int(item.get("favorites")) or 0 for item in result.get("items") or []), default=0)
-            earned += 1 if observed >= 10 else 0.5 if observed else 0
-            earned += 2 if favorites >= 100 else 1 if favorites >= 20 else 0
-            detail = f"{observed} annonce(s), jusqu'à {favorites} favori(s)"
-            earned = min(earned, 3)
-        if earned:
-            points += earned
-            evidence.append({"source": source, "earned": round(earned, 1), "detail": detail})
-    return round(min(points, 15), 1), evidence
-
-
-async def _confirm_social(candidate: dict[str, Any], sources: list[str], country: str = "FR") -> dict[str, Any]:
-    if not sources:
-        return {"keyword": candidate["keyword"], "results": [], "errors": []}
-    try:
-        return await scan_connected_sources(candidate["keyword"], sources, country)
-    except IntegrationError as exc:
-        return {"keyword": candidate["keyword"], "results": [], "errors": [{"source": "social", "message": str(exc)}]}
-
-
-def score_auto_opportunity(candidate: dict[str, Any], measurement: dict[str, Any],
-                           social_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def score_auto_opportunity(candidate: dict[str, Any], measurement: dict[str, Any]) -> dict[str, Any]:
     factors: list[dict[str, Any]] = []
 
     marketing_rank = _safe_int(candidate.get("marketing_rank"))
@@ -690,21 +636,17 @@ def score_auto_opportunity(candidate: dict[str, Any], measurement: dict[str, Any
     fixed_points = 2 if fixed_share is not None and fixed_share >= 80 else 1 if fixed_share is not None and fixed_share >= 50 else 0
     market_quality = min(price_points + seller_points + fixed_points, 10)
     factors.append({"label": "Qualité du marché", "earned": round(market_quality, 1), "maximum": 10,
-                    "detail": f"Prix médian {price:.2f} {measurement.get('currency') or 'EUR'} · {measurement.get('sellers_sample') or 0} vendeur(s)" if price is not None
+                    "detail": f"Prix médian {price:.2f} {measurement.get('currency') or 'USD'} · {measurement.get('sellers_sample') or 0} vendeur(s)" if price is not None
                               else "Prix médian non disponible"})
 
-    social_score, social_evidence = score_social_confirmation(social_payload)
-    factors.append({"label": "Confirmation externe", "earned": social_score, "maximum": 15,
-                    "detail": " · ".join(item["detail"] for item in social_evidence) or "Aucune source sociale connectée ou aucun signal exploitable"})
-
     confidence = 0.0
-    confidence += 2 if marketing_rank else 0
-    confidence += 2 if measurement.get("sold_quantity") is not None else 0
-    confidence += 1 if measurement.get("history_available") else 0
-    factors.append({"label": "Confiance des données", "earned": confidence, "maximum": 5,
+    confidence += 8 if marketing_rank else 0
+    confidence += 8 if measurement.get("sold_quantity") is not None else 0
+    confidence += 4 if measurement.get("history_available") else 0
+    factors.append({"label": "Confiance des données eBay", "earned": confidence, "maximum": 20,
                     "detail": "Best Selling, quantité vendue estimée et historique augmentent la confiance"})
 
-    score = round(min(demand + competition + momentum + market_quality + social_score + confidence, 100))
+    score = round(min(demand + competition + momentum + market_quality + confidence, 100))
     if score >= 75:
         verdict = "À TESTER"
     elif score >= 60:
@@ -713,7 +655,7 @@ def score_auto_opportunity(candidate: dict[str, Any], measurement: dict[str, Any
         verdict = "SURVEILLER"
     else:
         verdict = "FAIBLE"
-    confidence_label = "Élevée" if confidence >= 4 and social_score >= 5 else "Moyenne" if confidence >= 2 else "Faible"
+    confidence_label = "Élevée" if confidence >= 16 else "Moyenne" if confidence >= 8 else "Faible"
     return {
         "score": score,
         "verdict": verdict,
@@ -722,19 +664,26 @@ def score_auto_opportunity(candidate: dict[str, Any], measurement: dict[str, Any
         "competition_score": round(competition, 1),
         "momentum_score": momentum,
         "market_quality_score": round(market_quality, 1),
-        "social_score": social_score,
         "factors": factors,
-        "social_evidence": social_evidence,
-        "method": "EBAY_FIRST_V1",
+        "method": "EBAY_US_ONLY_V2",
         "meaning": (
-            "Score fondé sur des catégories eBay, les annonces actives, la quantité vendue estimée lorsqu'elle est fournie, "
-            "et des confirmations externes ciblées. Ce n'est pas un volume exact de recherches ni le chiffre d'affaires d'un concurrent."
+            "Score fondé uniquement sur les catégories eBay US, les annonces actives, la quantité vendue estimée "
+            "lorsqu'elle est fournie et l'historique observé. Ce n'est pas un volume exact de recherches ni le "
+            "chiffre d'affaires d'un concurrent."
         ),
     }
 
 
-def _upsert_opportunity(candidate: dict[str, Any], measurement: dict[str, Any], score: dict[str, Any],
-                        social_payload: dict[str, Any], marketplace: str) -> tuple[dict[str, Any], bool]:
+def _upsert_opportunity(
+    candidate: dict[str, Any],
+    measurement: dict[str, Any],
+    score: dict[str, Any],
+    marketplace: str,
+) -> tuple[dict[str, Any], bool]:
+    if marketplace != "EBAY_US":
+        raise ValueError("Seules les opportunités eBay US sont autorisées")
+    if str(measurement.get("currency") or "").upper() != "USD":
+        raise ValueError("Seules les opportunités en USD sont autorisées")
     _ensure_tables()
     key_raw = f"{marketplace}|{_normalize(candidate['keyword'])}"
     opportunity_key = hashlib.sha256(key_raw.encode()).hexdigest()[:24]
@@ -768,10 +717,9 @@ def _upsert_opportunity(candidate: dict[str, Any], measurement: dict[str, Any], 
             "competition_score": score["competition_score"],
             "momentum_score": score["momentum_score"],
             "market_quality_score": score["market_quality_score"],
-            "social_score": score["social_score"],
             "total_results": int(measurement.get("total_results") or 0),
             "median_price": measurement.get("median_price"),
-            "currency": measurement.get("currency") or "EUR",
+            "currency": "USD",
             "sellers_sample": int(measurement.get("sellers_sample") or 0),
             "top_seller_share": float(measurement.get("top_seller_share") or 0),
             "sold_quantity": measurement.get("sold_quantity"),
@@ -781,7 +729,6 @@ def _upsert_opportunity(candidate: dict[str, Any], measurement: dict[str, Any], 
             "image_url": measurement.get("image_url") or candidate.get("sample_image") or "",
             "sources_json": json.dumps(candidate.get("sources") or [], ensure_ascii=False),
             "factors_json": json.dumps(score.get("factors") or [], ensure_ascii=False),
-            "social_json": json.dumps(social_payload or {}, ensure_ascii=False),
             "payload_json": json.dumps({"candidate": candidate, "measurement": measurement, "score": score}, ensure_ascii=False),
             "first_seen_at": first_seen,
             "last_seen_at": now,
@@ -818,7 +765,9 @@ def _upsert_opportunity(candidate: dict[str, Any], measurement: dict[str, Any], 
 
 async def run_auto_radar(marketplace: str | None = None, trigger: str = "manual") -> dict[str, Any]:
     settings = get_settings()
-    market = marketplace or settings.ebay_marketplace_id or "EBAY_FR"
+    market = marketplace or settings.ebay_marketplace_id or "EBAY_US"
+    if market != "EBAY_US":
+        raise RuntimeError("Le Radar automatique est limité à eBay US")
     if settings.ebay_effective_env != "production" or not settings.ebay_client_id or not settings.ebay_client_secret:
         raise RuntimeError("Des clés eBay Production sont nécessaires pour la découverte automatique")
     if _AUTO_LOCK.locked():
@@ -892,29 +841,9 @@ async def run_auto_radar(marketplace: str | None = None, trigger: str = "manual"
                 else:
                     measured_pairs.append((candidate, measurement))
 
-            connected_social = [
-                row["id"] for row in connection_statuses()
-                if row.get("connected") and row.get("id") in {"youtube", "tiktok", "etsy"}
-            ]
-            preliminary = [
-                (candidate, measurement, score_auto_opportunity(candidate, measurement, None))
-                for candidate, measurement in measured_pairs
-            ]
-            preliminary.sort(key=lambda row: row[2]["score"], reverse=True)
-            social_targets = preliminary[:MAX_SOCIAL_CONFIRMATIONS] if connected_social else []
-            social_raw = await _limited(
-                [_confirm_social(candidate, connected_social, "FR") for candidate, _, _ in social_targets],
-                concurrency=2,
-            ) if social_targets else []
-            social_by_keyword = {
-                candidate["keyword"]: payload if not isinstance(payload, Exception) else {"results": [], "errors": [{"message": str(payload)}]}
-                for (candidate, _, _), payload in zip(social_targets, social_raw)
-            }
-
             for candidate, measurement in measured_pairs:
-                social_payload = social_by_keyword.get(candidate["keyword"], {"results": [], "errors": []})
-                scored = score_auto_opportunity(candidate, measurement, social_payload)
-                opportunity, alerted = _upsert_opportunity(candidate, measurement, scored, social_payload, market)
+                scored = score_auto_opportunity(candidate, measurement)
+                opportunity, alerted = _upsert_opportunity(candidate, measurement, scored, market)
                 stored.append(opportunity)
                 alerts_created += int(alerted)
 
@@ -936,9 +865,8 @@ async def run_auto_radar(marketplace: str | None = None, trigger: str = "manual"
                 "candidates_measured": len(measured_pairs),
                 "opportunities": stored,
                 "alerts_created": alerts_created,
-                "social_sources": connected_social,
                 "errors": errors,
-                "method": "EBAY_FIRST_V1",
+                "method": "EBAY_US_ONLY_V2",
             }
         except Exception as exc:
             errors.append({"source": "Radar automatique", "message": str(exc)})

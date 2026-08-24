@@ -1,133 +1,98 @@
-# eBay Ops Bot v0.14.3
+# eBay US · CJ Ops Bot
 
-Application cloud et locale pensée pour être utilisée sans connaissances en programmation. La v0.14.3 garde le parcours **détecter une piste → trouver un fournisseur → calculer le coût réel → créer un produit → vendre → suivre le SAV**, avec les mêmes données sur Windows, Mac et iPhone après hébergement.
+Version **0.25.3**. Le bot fonctionne avec un périmètre volontairement unique :
 
-## Nouveautés v0.14.3
+- canal de vente : **eBay US** (`EBAY_US`) ;
+- devise : **USD** ;
+- fournisseur : **CJ Dropshipping** ;
+- destination client : **États-Unis** ;
+- logistique : entrepôt CJ **US prioritaire**, puis **Chine uniquement en fallback rentable**.
 
-- remplacement des tendances YouTube généralistes par des Shorts e-commerce récents ;
-- veille ciblée sur `#ecommerce`, `#dropshipping`, `#amazonfinds`, `#tiktokmademebuyit` et `#productfinds` ;
-- exclusion des vidéos de plus de trois minutes et des résultats sans contexte commercial ;
-- filtrage des mots génériques afin de faire ressortir des types de produits plutôt que « viral » ou « dropshipping » ;
-- affichage des Shorts retenus avec vues, durée et hashtags ;
-- anciens thèmes généralistes exclus de la boîte d'opportunités et des recherches fabricants.
+## Workflow
 
-## Nouveautés v0.14.2
+1. Le Radar mesure les annonces et vendeurs sur eBay US.
+2. La recherche CJ récupère les produits et variantes correspondants.
+3. Le calcul du coût livré vérifie le stock exact par entrepôt et le transport vers les États-Unis.
+4. Le moteur choisit d'abord une route US admissible. Une route Chine n'est retenue que si ses seuils renforcés de marge, profit, stock et délai sont tous respectés.
+5. Le Risk Engine prépare un brouillon eBay US local. Les écritures et publications restent verrouillées par défaut.
 
-- connecteur Amazon SP-API strictement limité au Radar et à la lecture seule ;
-- relevés Amazon France, Allemagne, Italie, Espagne, Royaume-Uni et États-Unis ;
-- catalogue, catégories, rangs de vente et historique des résultats disponibles ;
-- prix et nombre d'offres ajoutés lorsque le rôle Amazon Pricing est autorisé ;
-- surveillance Amazon France automatique toutes les six heures pour les produits suivis ;
-- Amazon fonctionne dans le Radar indépendamment de la connexion eBay Production.
+Le bot ne fabrique ni volume de recherche, ni ventes concurrentes, ni taux de conversion. Il distingue les données observées des estimations.
 
-## Nouveautés v0.14.1
+## Démarrage local
 
-- bouton d’export d’un diagnostic texte sécurisé, sans secret ni donnée client ;
-- onglet Aide complet pour présenter le bot à un associé ;
-- parcours guidé des connexions jusqu’au SAV ;
-- explication claire de chaque onglet, des scores et des limites des automatismes ;
-- rappel des actions qui exigent toujours une validation humaine.
+Prérequis : Python 3.14.
 
-## Nouveautés v0.14.0
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
+```
 
-- mode cloud privé avec connexion par e-mail et mot de passe ;
-- application web installable (PWA) sur Windows, macOS et l'écran d'accueil iPhone ;
-- mises à jour centralisées : le redéploiement remplace l'ancienne version sur tous les appareils ;
-- base SQLite placée sur un disque persistant et sauvegardée quotidiennement ;
-- création et téléchargement manuel des sauvegardes dans Paramètres ;
-- image Docker portable et Blueprint Render prêts à déployer ;
-- protections réseau : hôtes autorisés, origine contrôlée, cookie signé sécurisé et limitation des tentatives de connexion ;
-- mode local Windows/Mac conservé, ainsi que `LANCER_BOT.bat` et `DIAGNOSTIC_WINDOWS.bat`.
+Sous Windows, activez l'environnement avec `.venv\\Scripts\\activate`.
 
-## Fonctions v0.13.0 conservées
+Ouvrez ensuite `http://127.0.0.1:8765`.
 
-- Annuaire de 19 plateformes de sourcing et fournisseurs de niche, filtrable par niche et par accès CSV/XML/API/datafeed.
-- Score produit local sur 100 recalculé automatiquement après chaque changement, y compris pour les imports CJ.
-- Score de préparation séparé du score de demande eBay pour ne jamais inventer un signal marché.
-- Correction de la sauvegarde du Risk Engine : les nouvelles règles sont appliquées immédiatement.
-- Onglet SAV avec priorités, échéances, statuts et brouillons de réponse locaux supprimables.
-- Feuille de route multicanale : Cdiscount/Octopia, Kaufland, Amazon, TikTok Shop et Etsy.
+## Configuration
 
-## Fonctions v0.12.0 conservées
+Renseignez dans `.env` les identifiants eBay correspondant au même environnement :
 
-- détection automatique de thèmes sans mot-clé à partir des vidéos YouTube populaires d'un pays ;
-- extraction explicable des mots récurrents, avec nombre d'apparitions et échantillon public ;
-- centre Fournisseurs unique regroupant CJ, DropXL, Printful, Printify, Gelato, HyperSKU, Banggood, Wholesale2B, Alibaba, partenaires manuels et fabricants ;
-- recherche universelle dans les catalogues API réellement connectés ;
-- recherche fabricant assistée depuis une niche du Radar ;
-- carnet de contacts fabricants, préparation RFQ et suppression des brouillons ;
-- boîte d'opportunités dans Produits pour les niches détectées et produits CJ sélectionnés ;
-- conversion d'un produit CJ analysé en produit local, toujours en Dry-run ;
-- vrai lien de téléchargement du modèle CSV ;
-- bulles d'aide `?` sur les notions pouvant prêter à confusion ;
-- une source chiffrée avec une ancienne clé n'empêche plus les autres connexions de charger ;
-- migration Windows d'une paire cohérente `.env` + base locale pour éviter de casser les clés enregistrées.
+- `EBAY_CLIENT_ID`
+- `EBAY_CLIENT_SECRET`
+- `EBAY_RUNAME`
+- `EBAY_ENV=sandbox` ou `production`
 
-## Ce que signifie « automatique »
+Le profil `EBAY_US` / `USD` est verrouillé dans le code. Les anciennes valeurs régionales présentes dans un environnement externe ne peuvent pas modifier ce profil.
 
-YouTube autorise la lecture de son classement public `mostPopular` par pays. Le bot l'utilise toutes les six heures quand YouTube est connecté, puis compte les thèmes présents dans les titres et tags publics.
+La clé CJ est ajoutée depuis l'écran **CJ Dropshipping**. Elle est chiffrée dans le stockage persistant. Aucune commande fournisseur n'est créée par cette version.
 
-Ce signal ne représente **ni un volume de recherche, ni des ventes, ni un taux de conversion**. Une niche reste une piste jusqu'à confirmation par eBay Production, un fournisseur, le coût livré et la conformité.
+Avant toute écriture réelle eBay, configurez les Business Policies et les vraies clés de lieux d'expédition CJ :
 
-TikTok Commercial Content et Etsy restent des sources de confirmation ciblée : elles sont interrogées avec un thème précis détecté automatiquement ou saisi par l'utilisateur.
+- `EBAY_PAYMENT_POLICY_ID`
+- `EBAY_RETURN_POLICY_ID`
+- `EBAY_FULFILLMENT_POLICY_ID`
+- `EBAY_CJ_US_LOCATION_KEY`
+- `EBAY_CJ_CN_LOCATION_KEY`
 
-## Fournisseurs et fabricants
+Ne déclarez jamais un lieu US pour une variante réellement expédiée depuis la Chine.
 
-Le centre Fournisseurs distingue clairement :
+## Verrous de sécurité
 
-- les catalogues connectés et utilisables dans les recherches Produits ;
-- les accès API encore à demander, comme Wholesale2B ou HyperSKU ;
-- les partenaires manuels alimentés par CSV ;
-- les contacts fabricants et usines ;
-- les RFQ conservés en brouillon local.
+Ces valeurs restent désactivées pendant les tests :
 
-Le bot peut récupérer automatiquement un catalogue uniquement lorsqu'une API officielle ou un flux public autorisé est disponible. Il n'invente jamais un email, un contact ou un fichier CSV. Les fiches trouvées sur un annuaire doivent être vérifiées avant enregistrement, échantillon ou négociation.
-
-## Produits
-
-- produits manuels, catalogues CSV et produits issus des fournisseurs connectés ;
-- niches du Radar visibles dans une boîte d'opportunités ;
-- filtres par fournisseur, statut, score et marge ;
-- statuts `À tester`, `Winner` et `Rejeté` ;
-- coût fournisseur + transport + frais eBay + publicité + réserve retours + frais fixes ;
-- prix plancher et prix conseillé ;
-- Opportunity Score uniquement à partir des données réellement disponibles ;
-- préparation eBay sous forme de brouillon local.
-
-## Assistant intelligent
-
-La v0.14.0 utilise des règles explicables pour extraire les thèmes, calculer les marges, classer les risques, préparer les RFQ et proposer des brouillons SAV. Aucun service d'IA payant n'est activé silencieusement. Une IA générative pourra être branchée plus tard pour proposer plusieurs titres, descriptions ou messages, mais elle restera derrière les contrôles conformité, rentabilité, doublon et validation humaine.
-
-## Sécurité par défaut
-
-```text
-EBAY_ENV=sandbox
+```env
 DEMO_MODE=true
 EBAY_WRITE_ENABLED=false
 EBAY_PUBLISH_ENABLED=false
 ```
 
-Aucun paiement, aucune commande fournisseur et aucune publication eBay réelle ne sont déclenchés. AliExpress reste une source de comparaison uniquement. Pinterest et Reddit ne sont pas utilisés.
+Même avec un compte eBay connecté, le bot prépare uniquement des brouillons tant que les deux verrous d'écriture ne sont pas activés explicitement.
 
-## Démarrage Windows
+## Validation
 
-1. Décompresse complètement le ZIP.
-2. Ouvre le dossier `ebay-bot-v0.14.0`.
-3. Double-clique sur **`LANCER_BOT.bat`**.
-4. La première utilisation installe les dépendances et cherche la dernière installation locale complète.
-5. Le navigateur s'ouvre lorsque le bot répond réellement.
-6. Garde la fenêtre noire ouverte pendant l'utilisation.
+```bash
+python -m pytest -q
+python -m compileall -q app tests
+node --check app/static/simple_ui.js
+node --check app/static/service-worker.js
+```
 
-Adresse locale : `http://127.0.0.1:8765`
+La CI exécute les contrôles sous Python 3.14, comme l'image Docker de production.
 
-## Import CSV
+## Santé du service
 
-Le bouton **Télécharger le vrai modèle** télécharge `modele_fournisseur_ebay.csv`. Le bot accepte les séparateurs virgule, point-virgule et tabulation. Chaque ligne doit contenir au minimum :
+`GET /health` doit retourner notamment :
 
-- `supplier_sku` ;
-- `title` ;
-- `supplier_cost`.
+```json
+{
+  "ok": true,
+  "version": "0.25.3",
+  "operating_mode": "EBAY_US_CJ_ONLY",
+  "marketplace": "EBAY_US",
+  "currency": "USD",
+  "destination_country": "US"
+}
+```
 
-## Diagnostic
-
-En cas de problème, double-clique sur `DIAGNOSTIC_WINDOWS.bat`. Le rapport `diagnostic.txt` ne contient aucune clé API. `REPAIR_WINDOWS.bat` répare uniquement l'environnement Python et conserve la configuration et la base locale.
+Une version n'est considérée comme déployée qu'après succès de la CI, fusion sur `main`, succès du déploiement et vérification de ce endpoint public.

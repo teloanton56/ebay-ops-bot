@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services import db
+from app.services.cj_landed import save_cj_product_link
 from app.services.listing_generator import optimize_title
 
 
@@ -40,6 +41,7 @@ def test_cj_flow_has_one_click_analyze_and_import_without_navigation():
 
 def test_all_inclusive_margin_is_exposed_on_active_products():
     db.init_db()
+    supplier_id = db.ensure_provider_supplier("cj", "CJ Dropshipping", "US")
     product_id = db.upsert_product({
         "supplier_sku": "V025-MARGIN-1",
         "title": "Car organizer",
@@ -53,8 +55,16 @@ def test_all_inclusive_margin_is_exposed_on_active_products():
         "currency": "USD",
         "images": [],
         "aspects": {},
-        "supplier_id": None,
+        "supplier_id": supplier_id,
         "product_status": "À tester",
+    })
+    save_cj_product_link("V025-MARGIN-1", {
+        "pid": "PID-V025-MARGIN-1",
+        "variant_id": "VID-V025-MARGIN-1",
+        "warehouse": "US",
+        "destination_country": "US",
+        "currency": "USD",
+        "risk_flags": [],
     })
     with TestClient(app) as client:
         row = client.get(f"/api/products/{product_id}").json()
@@ -92,10 +102,10 @@ def test_ebay_seo_uses_only_relevant_market_hints_without_replacing_identity():
     assert "Optimiser pour eBay" in ui
 
 
-def test_pwa_and_ui_versions_follow_v0252():
+def test_pwa_and_ui_versions_follow_v0253():
     main = read("app/main.py")
     worker = read("app/static/service-worker.js")
-    assert 'VERSION = "0.25.2"' in main
-    assert "opsbot-v0.25.2-shell" in worker
-    assert "/static/simple_ui.js?v=0.25.2" in worker
-    assert "/static/simple_ui.css?v=0.25.2" in worker
+    assert 'VERSION = "0.25.3"' in main
+    assert "opsbot-v0.25.3-shell" in worker
+    assert "/static/simple_ui.js?v=0.25.3" in worker
+    assert "/static/simple_ui.css?v=0.25.3" in worker

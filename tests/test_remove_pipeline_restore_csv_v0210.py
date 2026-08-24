@@ -3,25 +3,22 @@ from pathlib import Path
 
 def test_pipeline_frontend_removed():
     main = Path('app/main.py').read_text(encoding='utf-8')
-    provider = Path('app/static/provider_cleanup.js').read_text(encoding='utf-8')
-    workflow = Path('app/static/workflow_cleanup.js').read_text(encoding='utf-8')
 
     assert 'opportunity_center.js' not in main
     assert 'opportunity_center.css' not in main
-    assert 'ensurePipelineSection' not in provider
-    assert "pipeline:" not in workflow
-    assert "'pipeline', 'catalog'" not in workflow
-    assert 'data-section="pipeline"' in provider
-    assert '#section-pipeline' in provider
+    assert not Path('app/static/opportunity_center.js').exists()
+    assert not Path('app/static/opportunity_center.css').exists()
+    assert not Path('app/static/provider_cleanup.js').exists()
+    assert not Path('app/static/workflow_cleanup.js').exists()
 
 
 def test_manual_supplier_csv_is_hidden_in_cj_only_mode():
-    provider = Path('app/static/provider_cleanup.js').read_text(encoding='utf-8')
+    suppliers = Path('app/routers/suppliers.py').read_text(encoding='utf-8')
+    dashboard = Path('app/templates/dashboard.html').read_text(encoding='utf-8')
 
-    assert "restoreManualSupplierBlock" not in provider
-    assert "hide(section.querySelector('.supplier-directory'))" in provider
-    assert "hide(section.querySelector('.manual-supplier-fallback'))" in provider
-    assert "importer csv" in provider.lower()
+    assert '@router.get("/directory")' not in suppliers
+    assert 'manual-supplier-fallback' not in dashboard
+    assert 'supplier-directory' not in dashboard
 
 
 def test_current_version_keeps_pipeline_assets_out_of_pwa():

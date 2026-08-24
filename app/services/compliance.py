@@ -54,9 +54,6 @@ _REVIEW_GROUPS: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
 }
 
-_RETAIL_MARKETPLACE_PROVIDERS = {"amazon", "aliexpress"}
-
-
 def _review_key(product_id: Any) -> str:
     return _REVIEW_PREFIX + str(product_id or "")
 
@@ -117,10 +114,6 @@ def _provider_code(product: dict[str, Any], supplier: dict[str, Any] | None) -> 
     sku = str(product.get("supplier_sku") or "").upper()
     if sku.startswith("CJ-"):
         return "cj"
-    if sku.startswith("ALI-"):
-        return "aliexpress"
-    if sku.startswith("AMZ-"):
-        return "amazon"
     return ""
 
 
@@ -163,17 +156,15 @@ def assess_compliance(product: dict[str, Any], supplier: dict[str, Any] | None =
         else:
             blocks.append(f"Validation conformité requise : {label}")
 
-    if provider in _RETAIL_MARKETPLACE_PROVIDERS:
+    if provider != "cj":
         publication_blocks.append(
-            f"Publication directe bloquée depuis {supplier.get('name') if supplier else provider.title()} : "
-            "cette source marketplace reste utilisable pour recherche/sourcing, pas comme fulfillment retail automatique eBay."
+            "Publication directe bloquée : CJ Dropshipping est le seul fournisseur autorisé."
         )
 
     if status == "REJECTED" and "Conformité rejetée manuellement" not in publication_blocks:
         publication_blocks.append("Conformité rejetée manuellement")
 
-    # A hard/manual-review block is also a publication block. Retail-marketplace
-    # restrictions are publication-only so these products can still be researched.
+    # A hard/manual-review block is also a publication block.
     all_publication_blocks = list(dict.fromkeys([*blocks, *publication_blocks]))
     return {
         "pass": not blocks,

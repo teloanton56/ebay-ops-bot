@@ -75,7 +75,8 @@ def _shipping_cost(item: dict[str, Any]) -> tuple[float | None, str]:
         costs.append((price, str(block.get("currency") or "USD")))
     if not costs:
         return None, "USD"
-    return min(costs, key=lambda entry: entry[0])
+    usd_costs = [entry for entry in costs if entry[1].upper() == "USD"]
+    return min(usd_costs or costs, key=lambda entry: entry[0])
 
 
 def _normalize_browse_listing(item: dict[str, Any], rank: int) -> dict[str, Any] | None:
@@ -87,7 +88,9 @@ def _normalize_browse_listing(item: dict[str, Any], rank: int) -> dict[str, Any]
         return None
 
     shipping, shipping_currency = _shipping_cost(item)
-    currency = str(price_block.get("currency") or shipping_currency or "USD")
+    currency = str(price_block.get("currency") or "USD").upper()
+    if currency != "USD" or (shipping is not None and shipping_currency.upper() != "USD"):
+        return None
     seller = item.get("seller") or {}
     image = item.get("image") or {}
     location = item.get("itemLocation") or {}
@@ -115,7 +118,7 @@ def _normalize_browse_listing(item: dict[str, Any], rank: int) -> dict[str, Any]
         "price": round(price, 2),
         "shipping_cost": round(shipping, 2) if shipping is not None else None,
         "buyer_total": total_price,
-        "currency": currency,
+        "currency": "USD",
         "condition": str(item.get("condition") or ""),
         "image_url": str(image.get("imageUrl") or ""),
         "item_url": str(item.get("itemWebUrl") or ""),

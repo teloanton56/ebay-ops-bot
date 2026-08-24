@@ -32,7 +32,6 @@ class RadarSettingsIn(BaseModel):
     full_hours: int = Field(default=4, ge=1, le=24)
     candidate_pool: int = Field(default=200, ge=50, le=200)
     deep_candidates: int = Field(default=25, ge=10, le=50)
-    social_confirmations: int = Field(default=8, ge=0, le=10)
     quick_opportunities: int = Field(default=30, ge=10, le=50)
     quota_reserve_percent: int = Field(default=20, ge=10, le=40)
     browse_daily_budget: int = Field(default=5000, ge=1000, le=100000)

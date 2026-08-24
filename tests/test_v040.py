@@ -8,9 +8,10 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services import db
 from app.services.cj import CJClient
+from app.services.cj_landed import save_cj_product_link
 from app.services.finance import ebay_series, empty_series, summarize
 from app.services.profit import suggest_price
-from app.services.radar import build_rfq_message, source_statuses
+from app.services.radar import source_statuses
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -119,7 +120,22 @@ def test_finance_without_sales_stays_zero_and_usd():
 def test_finance_uses_active_us_catalog_costs():
     now = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     orders = [{"creationDate": now.isoformat(), "pricingSummary": {"total": {"value": "40.00", "currency": "USD"}}, "lineItems": [{"sku": "FIN-US-1", "quantity": 2, "lineItemCost": {"value": "20.00"}}]}]
-    products = [{"supplier_sku": "FIN-US-1", "supplier_cost": 5, "shipping_cost": 2, "marketplace_id": "EBAY_US", "currency": "USD"}]
+    supplier_id = db.ensure_provider_supplier("cj", "CJ Dropshipping", "US")
+    products = [{
+        "supplier_sku": "FIN-US-1",
+        "supplier_cost": 5,
+        "shipping_cost": 2,
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
+        "supplier_id": supplier_id,
+    }]
+    save_cj_product_link("FIN-US-1", {
+        "pid": "PID-FIN-US-1",
+        "variant_id": "VID-FIN-US-1",
+        "warehouse": "US",
+        "destination_country": "US",
+        "currency": "USD",
+    })
     series, completeness = ebay_series(orders, products, 7, now)
     result = summarize(series, days=7, target=5_000, source="EBAY_US", completeness=completeness)
     assert result["totals"]["revenue"] == 40
@@ -128,12 +144,9 @@ def test_finance_uses_active_us_catalog_costs():
     assert result["currency"] == "USD"
 
 
-def test_source_statuses_and_future_rfq_copy_are_us_focused():
+def test_source_statuses_are_limited_to_ebay_and_cj():
     statuses = source_statuses()
     assert [row["id"] for row in statuses] == ["ebay", "cj"]
-    message = build_rfq_message("Factory", "car organizer", "50, 100")
-    assert "United States" in message
-    assert "DDP" in message
 
 
 def test_active_shell_identifies_current_us_cj_mode():

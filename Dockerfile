@@ -9,7 +9,6 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY sample_supplier.csv ./
 RUN addgroup --system opsbot && adduser --system --ingroup opsbot opsbot \
     && mkdir -p /data && chown -R opsbot:opsbot /app /data
 

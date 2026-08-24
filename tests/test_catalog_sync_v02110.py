@@ -1,31 +1,24 @@
-import asyncio
 from pathlib import Path
 
-import pytest
-from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
-from app.routers.supplier_flow import OfferIn, add_offer
+from app.main import app
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_retired_marketplace_supplier_cannot_enter_active_catalog():
-    with pytest.raises(HTTPException) as exc:
-        asyncio.run(add_offer(OfferIn(
-            provider="AliExpress",
-            supplier_sku="SYNC-V02110",
-            name="Retired marketplace regression product",
-            price=4.5,
-            shipping_cost=None,
-            currency="EUR",
-            stock=12,
-            shipping_days=None,
-            image_url="",
-            source_url="",
-        )))
-    assert exc.value.status_code == 410
-    assert "uniquement CJ" in str(exc.value.detail)
+    with TestClient(app) as client:
+        response = client.post("/api/supplier-flow/add", json={
+            "provider": "retired",
+            "supplier_sku": "SYNC-V02110",
+            "name": "Retired marketplace regression product",
+            "price": 4.5,
+            "currency": "GBP",
+            "stock": 12,
+        })
+    assert response.status_code == 422
 
 
 def test_legacy_catalog_sync_module_stays_dormant_but_new_ui_refreshes_products():

@@ -2,16 +2,11 @@ from pathlib import Path
 
 
 def test_visibility_cleanup_retires_old_sources_and_legacy_blocks():
-    script = Path("app/static/provider_cleanup.js").read_text(encoding="utf-8")
-    lower = script.lower()
+    dashboard = Path("app/templates/dashboard.html").read_text(encoding="utf-8").lower()
+    assert not Path("app/static/provider_cleanup.js").exists()
+    assert not Path("app/static/workflow_cleanup.js").exists()
     for retired in ("dropxl", "etsy", "amazon", "aliexpress", "tiktok", "youtube"):
-        assert retired in lower
-    assert "supplier-network" in script
-    assert "niche-directory-panel" in script
-    assert "#radarSources" in script
-    assert 'data-section="pipeline"' in script
-    assert "#section-pipeline" in script
-    assert "keepCJOnly" in script
+        assert retired not in dashboard
 
 
 def test_supplier_source_search_supports_only_cj():

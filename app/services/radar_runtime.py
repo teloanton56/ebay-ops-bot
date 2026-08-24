@@ -20,7 +20,6 @@ DEFAULT_RADAR_SETTINGS: dict[str, int] = {
     "full_hours": 4,
     "candidate_pool": 200,
     "deep_candidates": 25,
-    "social_confirmations": 8,
     "quick_opportunities": 30,
     "quota_reserve_percent": 20,
     "browse_daily_budget": 5000,
@@ -31,7 +30,6 @@ BOUNDS: dict[str, tuple[int, int]] = {
     "full_hours": (1, 24),
     "candidate_pool": (50, 200),
     "deep_candidates": (10, 50),
-    "social_confirmations": (0, 10),
     "quick_opportunities": (10, 50),
     "quota_reserve_percent": (10, 40),
     "browse_daily_budget": (1000, 100000),
@@ -54,9 +52,6 @@ def normalize_radar_settings(values: dict[str, Any] | None = None) -> dict[str, 
 
     normalized["deep_candidates"] = min(
         normalized["deep_candidates"], normalized["candidate_pool"]
-    )
-    normalized["social_confirmations"] = min(
-        normalized["social_confirmations"], normalized["deep_candidates"]
     )
     return normalized
 

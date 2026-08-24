@@ -13,6 +13,7 @@ from app.services.db import (
 from app.services.ebay import EbayClient
 from app.services.research import summarize_market
 from app.services.risk import assess_product
+from app.services.supplier_refresh import is_verified_cj_product
 
 _lock = asyncio.Lock()
 
@@ -31,7 +32,7 @@ async def analyze_catalog() -> dict:
     async with _lock:
         products = [
             row for row in list_products()
-            if row.get("marketplace_id") == "EBAY_US" and row.get("currency") == "USD"
+            if is_verified_cj_product(row)
         ]
         settings = get_settings()
         client = EbayClient()
@@ -54,7 +55,10 @@ async def analyze_catalog() -> dict:
                         "EBAY_US",
                         product.get("category_id"),
                     )
-                    items = data.get("itemSummaries") or []
+                    items = [
+                        row for row in data.get("itemSummaries") or []
+                        if str((row.get("price") or {}).get("currency") or "USD").upper() == "USD"
+                    ]
                     summary = summarize_market(
                         items,
                         product,

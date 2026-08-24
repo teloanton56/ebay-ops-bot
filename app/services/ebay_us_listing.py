@@ -29,9 +29,9 @@ def build_us_offer_payload(product: dict, price: float, merchant_location_key: s
     if not product.get("category_id"):
         raise EbayError("Product category_id is required before an offer can be created")
     if (product.get("marketplace_id") or settings.ebay_marketplace_id) != "EBAY_US":
-        raise EbayError("v0.23 can only create offers on EBAY_US")
+        raise EbayError("Only EBAY_US offers are supported")
     if (product.get("currency") or settings.ebay_currency) != "USD":
-        raise EbayError("v0.23 can only create offers in USD")
+        raise EbayError("Only USD offers are supported")
 
     return {
         "sku": product["supplier_sku"],

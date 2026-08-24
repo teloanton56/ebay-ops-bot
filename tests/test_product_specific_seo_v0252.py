@@ -9,6 +9,7 @@ CORRUPTED_TITLE = "fan Lasko 16 3-Speed Oscillating Adjustable Height Pedestal S
 
 
 def _create_candidate(pid: str, sku: str, name: str, category: str, variant_name: str) -> tuple[int, int]:
+    supplier_id = db.ensure_provider_supplier("cj", "CJ Dropshipping", "US")
     candidate_id = db.save_cj_candidate({
         "cj_pid": pid,
         "sku": sku,
@@ -44,13 +45,15 @@ def _create_candidate(pid: str, sku: str, name: str, category: str, variant_name
         "currency": "USD",
         "images": [],
         "aspects": {},
-        "supplier_id": None,
+        "supplier_id": supplier_id,
         "product_status": "À tester",
     })
     save_cj_product_link(sku, {
         "pid": pid,
         "variant_id": f"VID-{pid}",
         "warehouse": "US",
+        "destination_country": "US",
+        "currency": "USD",
         "risk_flags": [],
     })
     return candidate_id, product_id

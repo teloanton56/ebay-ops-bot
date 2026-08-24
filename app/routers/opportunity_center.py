@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.opportunity_center import (
-    amazon_intelligence,
     build_risk_report,
     command_center_status,
     compare_suppliers,
@@ -69,7 +68,11 @@ def workflow(workflow_id: int):
 
 @router.get("/workflows/{workflow_id}/events")
 def events(workflow_id: int, limit: int = Query(default=50, ge=1, le=200)):
-    return {"items": workflow_events(workflow_id, limit)}
+    try:
+        get_workflow(workflow_id)
+        return {"items": workflow_events(workflow_id, limit)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/workflows/{workflow_id}/suppliers/compare")
@@ -104,16 +107,6 @@ async def sellers(workflow_id: int):
         raise _bad_request(exc) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Analyse vendeurs indisponible : {exc}") from exc
-
-
-@router.post("/workflows/{workflow_id}/amazon")
-async def amazon(workflow_id: int):
-    try:
-        return await amazon_intelligence(workflow_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Analyse Amazon indisponible : {exc}") from exc
 
 
 @router.post("/workflows/{workflow_id}/prepare-draft")

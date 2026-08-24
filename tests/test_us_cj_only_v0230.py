@@ -64,28 +64,49 @@ def test_china_route_is_only_eligible_with_stricter_economics():
 
 def test_risk_engine_uses_route_specific_thresholds():
     cn_product = product_payload(supplier_sku="CJ-CN-TEST", supplier_cost=4, shipping_cost=5, stock=30, shipping_days=10, target_price=30)
-    save_cj_product_link("CJ-CN-TEST", {"pid": "PID-CN", "variant_id": "VID-CN", "warehouse": "CN", "risk_flags": []})
+    save_cj_product_link("CJ-CN-TEST", {
+        "pid": "PID-CN", "variant_id": "VID-CN", "warehouse": "CN",
+        "destination_country": "US", "currency": "USD", "risk_flags": [],
+    })
     risk = assess_product(cn_product)
     assert risk["pass"] is True and risk["route"]["warehouse"] == "CN" and risk["route"]["requirements"]["max_shipping_days"] == 12
     low_profit = assess_product({**cn_product, "target_price": 20})
     assert low_profit["pass"] is False and any("Profit estimé" in block for block in low_profit["blocks"])
     us_product = product_payload(supplier_sku="CJ-US-SLOW", shipping_days=8)
-    save_cj_product_link("CJ-US-SLOW", {"pid": "PID-US", "variant_id": "VID-US", "warehouse": "US", "risk_flags": []})
+    save_cj_product_link("CJ-US-SLOW", {
+        "pid": "PID-US", "variant_id": "VID-US", "warehouse": "US",
+        "destination_country": "US", "currency": "USD", "risk_flags": [],
+    })
     us_risk = assess_product(us_product)
     assert us_risk["pass"] is False and any("Délai 8j > maximum 7j" in block for block in us_risk["blocks"])
 
 
-def test_products_api_hides_legacy_fr_catalogue_and_forces_usd():
+def test_products_api_hides_legacy_catalogue_and_rejects_manual_creation():
     legacy_id = db.upsert_product(product_payload(supplier_sku="OLD-FR-1", marketplace_id="EBAY_FR", currency="EUR"))
     assert legacy_id
+    unverified_id = db.upsert_product(product_payload(supplier_sku="UNVERIFIED-US-1"))
+    assert unverified_id
+    supplier_id = db.ensure_provider_supplier("cj", "CJ Dropshipping", "US")
+    product_id = db.upsert_product(product_payload(supplier_sku="CJ-NEW-US-1", supplier_id=supplier_id))
+    save_cj_product_link("CJ-NEW-US-1", {
+        "pid": "PID-CJ-NEW-US-1",
+        "variant_id": "VID-CJ-NEW-US-1",
+        "warehouse": "US",
+        "destination_country": "US",
+        "currency": "USD",
+        "risk_flags": [],
+    })
     with TestClient(app) as client:
-        created = client.post("/api/products", json=product_payload(supplier_sku="CJ-NEW-US-1", marketplace_id="EBAY_FR", currency="EUR"))
-        assert created.status_code == 200
+        created = client.post("/api/products", json=product_payload(supplier_sku="MANUAL-US-1"))
+        assert created.status_code == 405
         listing = client.get("/api/products")
+        summary = client.get("/api/ui/summary")
     rows = listing.json()
     assert len(rows) == 1
+    assert rows[0]["id"] == product_id
     assert rows[0]["supplier_sku"] == "CJ-NEW-US-1"
     assert rows[0]["marketplace_id"] == "EBAY_US" and rows[0]["currency"] == "USD"
+    assert summary.json()["products"] == 1
 
 
 def test_retired_sources_are_rejected_by_active_api():
@@ -94,15 +115,17 @@ def test_retired_sources_are_rejected_by_active_api():
         social = client.post("/api/connections/signals/scan", json={"keyword": "organizer", "sources": ["youtube", "tiktok"], "country": "US"})
         discover = client.post("/api/radar/discover", json={"country": "US"})
         connections = client.get("/api/connections")
-    assert ali.status_code == 410 and social.status_code == 410 and discover.status_code == 410
-    assert connections.json()["operating_mode"] == "EBAY_US_CJ_ONLY" and connections.json()["sources"] == []
+    assert ali.status_code == 422
+    assert social.status_code == 404
+    assert discover.status_code == 404
+    assert connections.status_code == 404
 
 
-def test_settings_api_ignores_old_marketplace_and_currency():
+def test_settings_api_rejects_old_marketplace_and_currency():
     with TestClient(app) as client:
         response = client.post("/api/settings/ebay", json={"environment": "sandbox", "marketplace_id": "EBAY_FR", "currency": "EUR"})
         current = client.get("/api/settings/ebay")
-    assert response.json()["marketplace_id"] == "EBAY_US" and response.json()["currency"] == "USD"
+    assert response.status_code == 422
     assert current.json()["marketplace_id"] == "EBAY_US" and current.json()["currency"] == "USD"
 
 
@@ -153,7 +176,7 @@ def test_scheduler_refreshes_cj_and_never_syncs_legacy_fr_products():
     scheduler = read("app/services/scheduler.py")
     automation = read("app/routers/automation.py")
     assert "refresh_product_from_supplier" in scheduler
-    assert 'product.get("marketplace_id") != "EBAY_US"' in scheduler
-    assert 'product.get("currency") != "USD"' in scheduler
+    assert "is_verified_cj_product(product)" in scheduler
     assert "refresh_product_from_supplier" in automation
+    assert "is_verified_cj_product(product)" in automation
     assert '"USD"' in automation

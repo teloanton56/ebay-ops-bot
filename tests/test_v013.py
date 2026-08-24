@@ -4,6 +4,7 @@ from app.config import get_settings
 from app.main import app
 from app.routers import settings as settings_router
 from app.services import db
+from app.services.cj_landed import save_cj_product_link
 
 
 client = TestClient(app)
@@ -16,7 +17,7 @@ def test_risk_settings_are_reloaded_and_return_applied_values(tmp_path, monkeypa
     response = client.post("/api/settings/risk", json={
         "ebay_fee_percent": 13.6, "ad_rate_percent": 3, "fixed_fee": 0.40,
         "return_reserve_percent": 2, "min_margin_percent": 24,
-        "min_profit_eur": 5, "min_stock": 8, "max_shipping_days": 6,
+        "min_profit_usd": 5, "min_stock": 8, "max_shipping_days": 6,
         "max_supplier_price_jump_percent": 18,
     })
     assert response.status_code == 200
@@ -44,6 +45,14 @@ def test_product_score_is_automatic_for_active_us_catalog():
         "marketplace_id": "EBAY_US",
         "currency": "USD",
     })
+    save_cj_product_link("V013-SCORE-CJ-US", {
+        "pid": "PID-V013-SCORE",
+        "variant_id": "VID-V013-SCORE",
+        "warehouse": "US",
+        "destination_country": "US",
+        "currency": "USD",
+        "risk_flags": [],
+    })
     payload = client.get(f"/api/products/{product_id}").json()
     assert payload["marketplace_id"] == "EBAY_US"
     assert payload["currency"] == "USD"
@@ -52,17 +61,15 @@ def test_product_score_is_automatic_for_active_us_catalog():
     assert payload["product_score"]["market_score"] is None
 
 
-def test_niche_supplier_directory_remains_legacy_but_filterable():
-    payload = client.get("/api/suppliers/directory?category=Beaut%C3%A9").json()
-    assert payload["total"] >= 3
-    assert payload["legacy"] is True
-    assert all("Beauté" in row["categories"] for row in payload["results"])
+def test_legacy_supplier_directory_is_removed():
+    response = client.get("/api/suppliers/directory?category=Beauty")
+    assert response.status_code == 404
 
 
 def test_support_case_draft_is_local_and_deletable():
     db.init_db()
     created = client.post("/api/support/cases", json={
-        "marketplace": "EBAY", "order_ref": "ORDER-V013", "buyer_alias": "client-test",
+        "marketplace": "EBAY_US", "order_ref": "ORDER-V013", "buyer_alias": "client-test",
         "subject": "Colis en retard", "category": "Retard de livraison",
         "priority": "Haute", "status": "Nouveau", "customer_message": "Où est mon colis ?",
     })
@@ -73,9 +80,7 @@ def test_support_case_draft_is_local_and_deletable():
     assert client.delete(f"/api/support/cases/{case_id}").status_code == 200
 
 
-def test_single_channel_ui_hides_legacy_sales_channel_panel():
-    cleanup = open("app/static/provider_cleanup.js", encoding="utf-8").read()
-    workflow = open("app/static/workflow_cleanup.js", encoding="utf-8").read()
-    assert "sales-channel-panel" in cleanup
-    assert "eBay US" in workflow
-    assert "CJ Dropshipping" in workflow
+def test_single_channel_ui_has_no_legacy_cleanup_assets():
+    dashboard = open("app/templates/dashboard.html", encoding="utf-8").read()
+    assert "eBay US" in dashboard
+    assert "CJ Dropshipping" in dashboard

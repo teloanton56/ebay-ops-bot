@@ -196,43 +196,9 @@ def init_db() -> None:
                 scanned_at TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS factory_leads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                company TEXT NOT NULL,
-                source TEXT NOT NULL DEFAULT '',
-                website TEXT NOT NULL DEFAULT '',
-                email TEXT NOT NULL DEFAULT '',
-                country TEXT NOT NULL DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'À contacter',
-                notes TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS rfq_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                factory_id INTEGER,
-                product_query TEXT NOT NULL,
-                quantities TEXT NOT NULL,
-                specifications TEXT NOT NULL DEFAULT '',
-                message TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'BROUILLON',
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(factory_id) REFERENCES factory_leads(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS trend_discoveries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source TEXT NOT NULL,
-                country TEXT NOT NULL,
-                themes_json TEXT NOT NULL DEFAULT '[]',
-                items_json TEXT NOT NULL DEFAULT '[]',
-                scanned_at TEXT NOT NULL
-            );
-
             CREATE TABLE IF NOT EXISTS support_cases (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                marketplace TEXT NOT NULL DEFAULT 'EBAY',
+                marketplace TEXT NOT NULL DEFAULT 'EBAY_US',
                 order_ref TEXT NOT NULL DEFAULT '',
                 buyer_alias TEXT NOT NULL DEFAULT '',
                 subject TEXT NOT NULL,
@@ -567,74 +533,22 @@ def previous_radar_scan(keyword: str, source: str, marketplace: str, before_id: 
 
 def list_radar_scans(limit: int = 100) -> list[dict[str, Any]]:
     with conn() as c:
-        return [dict(row) for row in c.execute("SELECT * FROM radar_scans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
-
-
-def save_trend_discovery(source: str, country: str, themes: list[dict], items: list[dict]) -> int:
-    with conn() as c:
-        cur = c.execute("INSERT INTO trend_discoveries(source,country,themes_json,items_json,scanned_at) VALUES(?,?,?,?,?)",
-                        (source, country, json.dumps(themes, ensure_ascii=False),
-                         json.dumps(items, ensure_ascii=False), utc_now()))
-        return int(cur.lastrowid)
-
-
-def list_trend_discoveries(limit: int = 12) -> list[dict[str, Any]]:
-    with conn() as c:
-        rows = c.execute("SELECT * FROM trend_discoveries ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        results = []
-        for row in rows:
-            data = dict(row)
-            data["themes"] = json.loads(data.pop("themes_json") or "[]")
-            data["items"] = json.loads(data.pop("items_json") or "[]")
-            results.append(data)
-        return results
-
-
-def save_factory_lead(data: dict[str, Any]) -> int:
-    now = utc_now()
-    with conn() as c:
-        cur = c.execute("""INSERT INTO factory_leads(company,source,website,email,country,status,notes,created_at,updated_at)
-                         VALUES(?,?,?,?,?,?,?,?,?)""",
-                        (data["company"].strip(), data.get("source", "").strip(), data.get("website", "").strip(),
-                         data.get("email", "").strip(), data.get("country", "").strip().upper(),
-                         data.get("status", "À contacter"), data.get("notes", "").strip(), now, now))
-        return int(cur.lastrowid)
-
-
-def list_factory_leads() -> list[dict[str, Any]]:
-    with conn() as c:
-        return [dict(row) for row in c.execute("SELECT * FROM factory_leads ORDER BY id DESC").fetchall()]
-
-
-def delete_factory_lead(factory_id: int) -> bool:
-    with conn() as c:
-        return c.execute("DELETE FROM factory_leads WHERE id=?", (factory_id,)).rowcount > 0
-
-
-def save_rfq(data: dict[str, Any]) -> int:
-    with conn() as c:
-        cur = c.execute("INSERT INTO rfq_requests(factory_id,product_query,quantities,specifications,message,status,created_at) VALUES(?,?,?,?,?,'BROUILLON',?)",
-                        (data.get("factory_id"), data["product_query"], data["quantities"],
-                         data.get("specifications", ""), data["message"], utc_now()))
-        return int(cur.lastrowid)
-
-
-def list_rfqs() -> list[dict[str, Any]]:
-    with conn() as c:
-        return [dict(row) for row in c.execute("""SELECT r.*,f.company AS factory_company,f.email AS factory_email
-                                                 FROM rfq_requests r LEFT JOIN factory_leads f ON f.id=r.factory_id
-                                                 ORDER BY r.id DESC""").fetchall()]
-
-
-def delete_rfq(rfq_id: int) -> bool:
-    with conn() as c:
-        return c.execute("DELETE FROM rfq_requests WHERE id=? AND status='BROUILLON'", (rfq_id,)).rowcount > 0
+        rows = c.execute("SELECT * FROM radar_scans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    results = []
+    for row in rows:
+        data = dict(row)
+        try:
+            data["payload"] = json.loads(data.pop("payload_json") or "{}")
+        except json.JSONDecodeError:
+            data["payload"] = {}
+        results.append(data)
+    return results
 
 
 def save_support_case(data: dict[str, Any], case_id: int | None = None) -> int:
     now = utc_now()
     values = (
-        str(data.get("marketplace") or "EBAY").strip().upper(), str(data.get("order_ref") or "").strip(),
+        "EBAY_US", str(data.get("order_ref") or "").strip(),
         str(data.get("buyer_alias") or "").strip(), str(data.get("subject") or "").strip(),
         str(data.get("category") or "Autre").strip(), str(data.get("priority") or "Normale").strip(),
         str(data.get("status") or "Nouveau").strip(), data.get("due_at") or None,
@@ -645,7 +559,7 @@ def save_support_case(data: dict[str, Any], case_id: int | None = None) -> int:
         if case_id:
             c.execute("""UPDATE support_cases SET marketplace=?,order_ref=?,buyer_alias=?,subject=?,category=?,
                          priority=?,status=?,due_at=?,customer_message=?,internal_notes=?,draft_response=?,updated_at=?
-                         WHERE id=?""", (*values, now, case_id))
+                         WHERE id=? AND marketplace='EBAY_US'""", (*values, now, case_id))
             return case_id
         cur = c.execute("""INSERT INTO support_cases(marketplace,order_ref,buyer_alias,subject,category,priority,
                          status,due_at,customer_message,internal_notes,draft_response,created_at,updated_at)
@@ -655,13 +569,16 @@ def save_support_case(data: dict[str, Any], case_id: int | None = None) -> int:
 
 def get_support_case(case_id: int) -> dict[str, Any] | None:
     with conn() as c:
-        row = c.execute("SELECT * FROM support_cases WHERE id=?", (case_id,)).fetchone()
+        row = c.execute(
+            "SELECT * FROM support_cases WHERE id=? AND marketplace='EBAY_US'",
+            (case_id,),
+        ).fetchone()
         return dict(row) if row else None
 
 
 def list_support_cases() -> list[dict[str, Any]]:
     with conn() as c:
-        rows = c.execute("""SELECT * FROM support_cases
+        rows = c.execute("""SELECT * FROM support_cases WHERE marketplace='EBAY_US'
                           ORDER BY CASE status WHEN 'Nouveau' THEN 0 WHEN 'En cours' THEN 1
                           WHEN 'En attente client' THEN 2 ELSE 3 END,
                           CASE priority WHEN 'Urgente' THEN 0 WHEN 'Haute' THEN 1 ELSE 2 END,
@@ -671,7 +588,10 @@ def list_support_cases() -> list[dict[str, Any]]:
 
 def delete_support_case(case_id: int) -> bool:
     with conn() as c:
-        return c.execute("DELETE FROM support_cases WHERE id=?", (case_id,)).rowcount > 0
+        return c.execute(
+            "DELETE FROM support_cases WHERE id=? AND marketplace='EBAY_US'",
+            (case_id,),
+        ).rowcount > 0
 
 
 def update_support_case_fields(case_id: int, **fields: Any) -> bool:
@@ -682,7 +602,10 @@ def update_support_case_fields(case_id: int, **fields: Any) -> bool:
     values["updated_at"] = utc_now()
     clause = ", ".join(f"{key}=?" for key in values)
     with conn() as c:
-        return c.execute(f"UPDATE support_cases SET {clause} WHERE id=?", (*values.values(), case_id)).rowcount > 0
+        return c.execute(
+            f"UPDATE support_cases SET {clause} WHERE id=? AND marketplace='EBAY_US'",
+            (*values.values(), case_id),
+        ).rowcount > 0
 
 
 def save_listing(product_id: int, offer_id: str | None, listing_id: str | None, status: str,

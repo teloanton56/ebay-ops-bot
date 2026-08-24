@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.config import get_settings
-from app.services.db import save_listing, upsert_product, utc_now
+from app.services.db import ensure_provider_supplier, save_listing, upsert_product, utc_now
+from app.services.cj_landed import route_requirements, save_cj_product_link
 from app.services.ebay import EbayClient
 from app.services.listing_generator import generate_description, optimize_title
 from app.services.profit import suggest_price
@@ -12,12 +12,26 @@ from app.services.opportunity_store import (
     RESTRICTED_TERMS, _add_event, _safe_float, _safe_int, _update_workflow, get_workflow,
 )
 
+
+def _validate_cj_offer(offer: dict[str, Any]) -> None:
+    if (
+        str(offer.get("provider_code") or "").casefold() != "cj"
+        or str(offer.get("currency") or "").upper() != "USD"
+        or str(offer.get("destination_country") or "").upper() != "US"
+        or str(offer.get("warehouse") or "").upper() not in {"US", "CN"}
+        or not str(offer.get("cj_pid") or "").strip()
+        or not str(offer.get("variant_id") or "").strip()
+    ):
+        raise ValueError("Seules les variantes CJ vérifiées en USD et livrées aux États-Unis sont autorisées")
+
+
 def build_risk_report(workflow_id: int) -> dict[str, Any]:
     workflow = get_workflow(workflow_id)
     offer = workflow.get("selected_offer") or {}
     if not offer:
         raise ValueError("Sélectionnez d'abord une offre fournisseur")
-    settings = get_settings()
+    _validate_cj_offer(offer)
+    requirements = offer.get("requirements") or route_requirements(str(offer.get("warehouse") or "US"))
     blocks = list(offer.get("blocks") or [])
     warnings = list(offer.get("warnings") or [])
     checks: list[dict[str, Any]] = []
@@ -28,21 +42,25 @@ def build_risk_report(workflow_id: int) -> dict[str, Any]:
             (blocks if critical else warnings).append(detail)
 
     stock = _safe_int(offer.get("stock"))
-    check("Stock", stock is not None and stock >= settings.min_stock,
-          f"Stock requis : {settings.min_stock}; observé : {stock if stock is not None else 'inconnu'}",
+    min_stock = int(requirements["min_stock"])
+    check("Stock", stock is not None and stock >= min_stock,
+          f"Stock requis : {min_stock}; observé : {stock if stock is not None else 'inconnu'}",
           critical=stock is not None and stock <= 0)
     days = _safe_int(offer.get("shipping_days"))
-    check("Délai", days is not None and days <= settings.max_shipping_days,
-          f"Maximum : {settings.max_shipping_days} jours; observé : {days if days is not None else 'inconnu'}",
-          critical=days is not None and days > settings.max_shipping_days)
+    max_days = int(requirements["max_shipping_days"])
+    check("Délai", days is not None and 0 < days <= max_days,
+          f"Maximum : {max_days} jours; observé : {days if days is not None else 'inconnu'}",
+          critical=days is not None and days > max_days)
     profit = offer.get("profit") if isinstance(offer.get("profit"), dict) else {}
     margin = _safe_float(profit.get("margin_percent"))
     estimated_profit = _safe_float(profit.get("estimated_profit"))
-    check("Marge", margin is not None and margin >= settings.min_margin_percent,
-          f"Minimum : {settings.min_margin_percent:.1f}%; estimée : {margin if margin is not None else 'inconnue'}",
+    min_margin = float(requirements["min_margin_percent"])
+    check("Marge", margin is not None and margin >= min_margin,
+          f"Minimum : {min_margin:.1f}%; estimée : {margin if margin is not None else 'inconnue'}",
           critical=True)
-    check("Profit", estimated_profit is not None and estimated_profit >= settings.min_profit_eur,
-          f"Minimum : {settings.min_profit_eur:.2f} €; estimé : {estimated_profit if estimated_profit is not None else 'inconnu'}",
+    min_profit = float(requirements["min_profit"])
+    check("Profit", estimated_profit is not None and estimated_profit >= min_profit,
+          f"Minimum : {min_profit:.2f} USD; estimé : {estimated_profit if estimated_profit is not None else 'inconnu'} USD",
           critical=True)
     check("Coût livré", offer.get("landed_cost") is not None,
           "Prix produit et transport doivent être tous les deux confirmés", critical=True)
@@ -119,6 +137,7 @@ async def prepare_listing_draft(workflow_id: int) -> dict[str, Any]:
     risk = workflow.get("risk") or {}
     if not offer:
         raise ValueError("Sélectionnez une offre fournisseur")
+    _validate_cj_offer(offer)
     if not risk.get("pass"):
         risk = build_risk_report(workflow_id)
     if not risk.get("pass"):
@@ -129,9 +148,12 @@ async def prepare_listing_draft(workflow_id: int) -> dict[str, Any]:
     market_price = _safe_float(opportunity.get("median_price"))
     product_cost = _safe_float(offer.get("product_cost")) or 0.0
     shipping_cost = _safe_float(offer.get("shipping_cost")) or 0.0
+    requirements = offer.get("requirements") or route_requirements(str(offer.get("warehouse") or "US"))
     price_result = suggest_price(
         {"supplier_cost": product_cost, "shipping_cost": shipping_cost, "target_price": market_price or 0},
         market_price,
+        min_margin_percent=float(requirements["min_margin_percent"]),
+        min_profit=float(requirements["min_profit"]),
     )
 
     client = EbayClient()
@@ -140,19 +162,20 @@ async def prepare_listing_draft(workflow_id: int) -> dict[str, Any]:
     required_missing: list[str] = []
     taxonomy_errors: list[str] = []
     try:
-        suggestion = await client.get_category_suggestions(keyword, workflow.get("marketplace"))
+        suggestion = await client.get_category_suggestions(keyword, "EBAY_US")
         category_id, category_name = _category_suggestion(suggestion)
         if category_id:
-            aspects = await client.get_item_aspects(category_id, workflow.get("marketplace"))
+            aspects = await client.get_item_aspects(category_id, "EBAY_US")
             required_missing = _required_aspects(aspects)
     except Exception as exc:
         taxonomy_errors.append(str(exc))
 
     sku_seed = str(offer.get("supplier_sku") or offer.get("offer_key") or workflow_id)
-    supplier_sku = f"HUB-{workflow_id}-{sku_seed}"[:50]
+    supplier_sku = f"CJ-{workflow_id}-{sku_seed}"[:50]
     raw_title = opportunity.get("title") or offer.get("name") or keyword
     title = optimize_title(str(raw_title))
     images = [offer.get("image_url")] if offer.get("image_url") else []
+    supplier_id = ensure_provider_supplier("cj", "CJ Dropshipping", "US")
     product_data = {
         "supplier_sku": supplier_sku,
         "title": title,
@@ -164,17 +187,25 @@ async def prepare_listing_draft(workflow_id: int) -> dict[str, Any]:
         "target_price": price_result["suggested_price"],
         "category_id": category_id,
         "condition": "NEW",
-        "marketplace_id": workflow.get("marketplace") or "EBAY_FR",
-        "currency": offer.get("currency") or "EUR",
+        "marketplace_id": "EBAY_US",
+        "currency": "USD",
         "images": images,
         "aspects": {},
-        "supplier_id": None,
+        "supplier_id": supplier_id,
         "product_status": "À tester",
         "opportunity_score": opportunity.get("score"),
         "suggested_price": price_result["suggested_price"],
     }
     product_data["description"] = generate_description(product_data)
     product_id = upsert_product(product_data)
+    save_cj_product_link(supplier_sku, {
+        "pid": str(offer.get("cj_pid") or ""),
+        "variant_id": str(offer.get("variant_id") or ""),
+        "warehouse": str(offer.get("warehouse") or "").upper(),
+        "destination_country": "US",
+        "currency": "USD",
+        "risk_flags": offer.get("compliance_flags") or [],
+    })
     listing_id = save_listing(
         product_id,
         None,
