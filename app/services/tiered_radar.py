@@ -13,7 +13,6 @@ from app.services.auto_radar import (
     _AUTO_LOCK,
     _browse_category,
     _browse_seed,
-    _confirm_social,
     _finish_run,
     _limited,
     _load_category_tree,
@@ -28,7 +27,6 @@ from app.services.auto_radar import (
     select_discovery_categories,
     FALLBACK_DISCOVERY_SEEDS,
 )
-from app.services.connections import connection_statuses
 from app.services.db import conn, previous_radar_scan, save_radar_scan
 from app.services.ebay import EbayClient
 from app.services.radar_quota import RadarQuotaError, quota_status, reserve_browse_calls
@@ -85,7 +83,6 @@ def tiered_radar_status() -> dict[str, Any]:
         "interval_hours": runtime["full_hours"],
         "candidate_pool": runtime["candidate_pool"],
         "deep_candidates": runtime["deep_candidates"],
-        "social_confirmations": runtime["social_confirmations"],
         "quick_opportunities": runtime["quick_opportunities"],
         "quota_reserve_percent": runtime["quota_reserve_percent"],
         "browse_daily_budget": runtime["browse_daily_budget"],
@@ -121,6 +118,8 @@ def _candidate_from_opportunity(opportunity: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _light_measure(client: EbayClient, opportunity: dict[str, Any], marketplace: str) -> dict[str, Any]:
+    if marketplace != "EBAY_US":
+        raise ValueError("Le suivi automatique est limité à eBay US")
     keyword = str(opportunity.get("keyword") or "").strip()
     payload = await client.public_request(
         "GET",
@@ -128,14 +127,18 @@ async def _light_measure(client: EbayClient, opportunity: dict[str, Any], market
         params={"q": keyword, "limit": 50},
         marketplace_id=marketplace,
     )
-    items = payload.get("itemSummaries") or []
+    items = [
+        row for row in payload.get("itemSummaries") or []
+        if str((row.get("price") or {}).get("currency") or "USD").upper() == "USD"
+    ]
     prices: list[float] = []
     sellers: list[str] = []
     recent = 0
     dated = 0
     fixed = 0
     for item in items:
-        price = _safe_float((item.get("price") or {}).get("value"))
+        price_block = item.get("price") or {}
+        price = _safe_float(price_block.get("value"))
         if price is not None:
             prices.append(price)
         seller = str((item.get("seller") or {}).get("username") or "").strip()
@@ -154,21 +157,13 @@ async def _light_measure(client: EbayClient, opportunity: dict[str, Any], market
     previous_payload = opportunity.get("payload") if isinstance(opportunity.get("payload"), dict) else {}
     previous_measurement = previous_payload.get("measurement") if isinstance(previous_payload.get("measurement"), dict) else {}
     representative = next((item for item in items if item.get("itemId")), {})
-    currency = next(
-        (
-            str((item.get("price") or {}).get("currency") or "")
-            for item in items
-            if (item.get("price") or {}).get("currency")
-        ),
-        opportunity.get("currency") or "EUR",
-    )
     result = {
         "keyword": keyword,
         "source": "EBAY_AUTO_QUICK",
         "marketplace": marketplace,
         "marketplace_name": marketplace,
         "total_results": int(payload.get("total") or len(items)),
-        "currency": currency,
+        "currency": "USD",
         "median_price": round(median(prices), 2) if prices else opportunity.get("median_price"),
         "min_price": round(min(prices), 2) if prices else previous_measurement.get("min_price"),
         "max_price": round(max(prices), 2) if prices else previous_measurement.get("max_price"),
@@ -202,7 +197,9 @@ async def _light_measure(client: EbayClient, opportunity: dict[str, Any], market
 async def run_quick_radar(marketplace: str | None = None, trigger: str = "manual-quick") -> dict[str, Any]:
     settings = get_settings()
     runtime = load_radar_settings()
-    market = marketplace or settings.ebay_marketplace_id or "EBAY_FR"
+    market = marketplace or settings.ebay_marketplace_id or "EBAY_US"
+    if market != "EBAY_US":
+        raise RuntimeError("Le Radar rapide est limité à eBay US")
     if settings.ebay_effective_env != "production" or not settings.ebay_client_id or not settings.ebay_client_secret:
         raise RuntimeError("Des clés eBay Production sont nécessaires pour le suivi rapide")
     if _AUTO_LOCK.locked():
@@ -242,9 +239,8 @@ async def run_quick_radar(marketplace: str | None = None, trigger: str = "manual
                     )
                     continue
                 candidate = _candidate_from_opportunity(opportunity)
-                social_payload = opportunity.get("social") if isinstance(opportunity.get("social"), dict) else {}
-                score = score_auto_opportunity(candidate, measurement, social_payload)
-                updated, alerted = _upsert_opportunity(candidate, measurement, score, social_payload, market)
+                score = score_auto_opportunity(candidate, measurement)
+                updated, alerted = _upsert_opportunity(candidate, measurement, score, market)
                 stored.append(updated)
                 alerts_created += int(alerted)
 
@@ -287,7 +283,9 @@ async def run_quick_radar(marketplace: str | None = None, trigger: str = "manual
 async def run_full_radar(marketplace: str | None = None, trigger: str = "manual-full") -> dict[str, Any]:
     settings = get_settings()
     runtime = load_radar_settings()
-    market = marketplace or settings.ebay_marketplace_id or "EBAY_FR"
+    market = marketplace or settings.ebay_marketplace_id or "EBAY_US"
+    if market != "EBAY_US":
+        raise RuntimeError("Le Radar complet est limité à eBay US")
     if settings.ebay_effective_env != "production" or not settings.ebay_client_id or not settings.ebay_client_secret:
         raise RuntimeError("Des clés eBay Production sont nécessaires pour la découverte automatique")
     if _AUTO_LOCK.locked():
@@ -381,42 +379,9 @@ async def run_full_radar(marketplace: str | None = None, trigger: str = "manual-
                 else:
                     measured_pairs.append((candidate, measurement))
 
-            connected_social = [
-                row["id"]
-                for row in connection_statuses()
-                if row.get("connected") and row.get("id") in {"youtube", "tiktok", "etsy"}
-            ]
-            preliminary = [
-                (candidate, measurement, score_auto_opportunity(candidate, measurement, None))
-                for candidate, measurement in measured_pairs
-            ]
-            preliminary.sort(key=lambda row: row[2]["score"], reverse=True)
-            social_targets = (
-                preliminary[: runtime["social_confirmations"]]
-                if connected_social and runtime["social_confirmations"]
-                else []
-            )
-            social_raw = (
-                await _limited(
-                    [_confirm_social(candidate, connected_social, "FR") for candidate, _, _ in social_targets],
-                    concurrency=2,
-                )
-                if social_targets
-                else []
-            )
-            social_by_keyword = {
-                candidate["keyword"]: (
-                    payload
-                    if not isinstance(payload, Exception)
-                    else {"results": [], "errors": [{"message": str(payload)}]}
-                )
-                for (candidate, _, _), payload in zip(social_targets, social_raw)
-            }
-
             for candidate, measurement in measured_pairs:
-                social_payload = social_by_keyword.get(candidate["keyword"], {"results": [], "errors": []})
-                scored = score_auto_opportunity(candidate, measurement, social_payload)
-                opportunity, alerted = _upsert_opportunity(candidate, measurement, scored, social_payload, market)
+                scored = score_auto_opportunity(candidate, measurement)
+                opportunity, alerted = _upsert_opportunity(candidate, measurement, scored, market)
                 stored.append(opportunity)
                 alerts_created += int(alerted)
 
@@ -440,8 +405,6 @@ async def run_full_radar(marketplace: str | None = None, trigger: str = "manual-
                 "candidates_measured": len(measured_pairs),
                 "opportunities": stored,
                 "alerts_created": alerts_created,
-                "social_sources": connected_social,
-                "social_confirmations": len(social_targets),
                 "errors": errors,
                 "quota": quota,
                 "method": "EBAY_TIERED_V2",

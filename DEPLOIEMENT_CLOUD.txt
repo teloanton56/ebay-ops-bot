@@ -1,4 +1,4 @@
-EBAY OPS BOT v0.14.0 — MISE EN LIGNE
+EBAY US · CJ OPS BOT v0.25.3 — MISE EN LIGNE
 ======================================
 
 Ce dossier est prêt pour un hébergement Docker avec disque persistant.
@@ -29,10 +29,9 @@ DONNÉES ET SÉCURITÉ
 - La base et runtime.env résident dans /data, le disque persistant.
 - Des sauvegardes SQLite sont créées chaque jour et téléchargeables dans Paramètres.
 - Ne perdez jamais APP_ENCRYPTION_KEY : elle protège les clés API déjà enregistrées.
+- Le profil eBay US / USD et le fournisseur CJ sont les seuls modes actifs.
 - Sandbox, mode démo et dry-run restent actifs par défaut.
 - Aucun port du PC personnel n'est exposé sur Internet.
 
-MIGRATION DE LA v0.13.0
 La base locale n'est pas copiée automatiquement vers Internet. Comme elle contient
-des clés chiffrées, la migration sera faite séparément et prudemment après le
-premier déploiement. Le catalogue peut aussi être réimporté par CSV.
+des clés chiffrées, toute migration doit être faite séparément et prudemment.

@@ -223,7 +223,7 @@ async def hunt_margin_opportunities(keyword: str, *, limit: int = MAX_RESULTS) -
     if reference_price is None or reference_price <= 0:
         raise ValueError("eBay US ne retourne aucun prix médian exploitable pour cette recherche.")
     if market["currency"].upper() != "USD":
-        raise ValueError("Margin Hunter v0.23 attend des prix eBay US en USD.")
+        raise ValueError("Margin Hunter attend des prix eBay US en USD.")
 
     candidates: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
@@ -296,5 +296,5 @@ async def hunt_margin_opportunities(keyword: str, *, limit: int = MAX_RESULTS) -
         "verified_candidates": len(selected),
         "goal_hits": sum(1 for row in selected if row.get("goal_hit")),
         "errors": errors,
-        "note": "Margin Hunter v0.23 compare uniquement eBay US à CJ Dropshipping, en USD et avec coût livré vers les États-Unis.",
+        "note": "Margin Hunter compare uniquement eBay US à CJ Dropshipping, en USD et avec coût livré vers les États-Unis.",
     }

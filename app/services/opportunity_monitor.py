@@ -8,8 +8,8 @@ from typing import Any
 from app.config import get_settings
 from app.services.backups import create_backup, list_backups, resolve_backup
 from app.services.cj import CJClient
-from app.services.connections import DropXLClient, connection_status
-from app.services.db import add_alert, conn, get_product, utc_now
+from app.services.cj_landed import resolve_cj_landed_offer, route_requirements
+from app.services.db import add_alert, conn, utc_now
 from app.services.ebay import EbayClient
 from app.services.opportunity_store import (
     MONITOR_LIMIT, STAGES, STAGE_LABELS, _CENTER_LOCK, _add_event, _ensure_tables,
@@ -56,71 +56,67 @@ def set_monitoring(workflow_id: int, enabled: bool) -> dict[str, Any]:
 def set_workflow_stage(workflow_id: int, stage: str) -> dict[str, Any]:
     if stage not in STAGES:
         raise ValueError("Statut de pipeline invalide")
+    get_workflow(workflow_id)
     updated = _update_workflow(workflow_id, stage=stage)
     _add_event(workflow_id, "STAGE_CHANGED", f"Statut changé vers {STAGE_LABELS.get(stage, stage)}")
     return updated
 
 
-def _euro_offer_from_selected(selected: dict[str, Any], *, product_cost: float | None = None,
-                              stock: int | None = None, shipping_days: int | None = None) -> dict[str, Any]:
-    updated = dict(selected)
-    if product_cost is not None:
-        updated["product_cost"] = product_cost
-    if stock is not None:
-        updated["stock"] = stock
-    if shipping_days is not None:
-        updated["shipping_days"] = shipping_days
-    market_price = _safe_float(selected.get("suggested_price"))
-    return _score_offer(updated, market_price)
-
-
-async def _refresh_selected_offer(workflow: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+async def _refresh_selected_offer(
+    workflow: dict[str, Any],
+    market_price: float | None,
+) -> tuple[dict[str, Any], list[str]]:
     selected = dict(workflow.get("selected_offer") or {})
     if not selected:
         return selected, []
     provider = str(selected.get("provider_code") or "").casefold()
+    if provider != "cj":
+        raise ValueError("La surveillance accepte uniquement une offre CJ Dropshipping")
+    selected_warehouse = str(selected.get("warehouse") or "").upper()
+    if (
+        selected_warehouse not in {"US", "CN"}
+        or str(selected.get("destination_country") or "").upper() != "US"
+        or str(selected.get("currency") or "").upper() != "USD"
+        or not str(selected.get("cj_pid") or "").strip()
+        or not str(selected.get("variant_id") or "").strip()
+    ):
+        raise ValueError("La surveillance exige une variante CJ US/CN vérifiée vers les États-Unis en USD")
     warnings: list[str] = []
-    if provider == "cj" and CJClient().status().get("connected"):
+    client = CJClient()
+    if client.status().get("connected"):
         try:
-            detail = await CJClient().product_detail(str(selected.get("cj_pid") or ""))
-            variant = next(
-                (row for row in detail.get("variants") or [] if str(row.get("vid") or "") == str(selected.get("variant_id") or "")),
-                None,
+            landed = await resolve_cj_landed_offer(
+                client,
+                str(selected.get("cj_pid") or ""),
+                fallback_price_usd=float(selected.get("product_cost") or 0),
+                preferred_variant_id=str(selected.get("variant_id") or ""),
+                preferred_warehouse=selected_warehouse,
+                destination_country="US",
+                reference_price=market_price,
             )
-            if variant:
-                rate = await CJClient().usd_to_eur()
-                price = round(float(variant.get("price_usd") or 0) * float(rate["rate"]), 2)
-                selected = _euro_offer_from_selected(
-                    selected,
-                    product_cost=price,
-                    stock=_safe_int(variant.get("stock")),
+            warehouse = str(landed.get("warehouse") or "").upper()
+            if warehouse != selected_warehouse:
+                raise ValueError(
+                    f"La route CJ {selected_warehouse} n'est plus exploitable ; "
+                    "le bot refuse de changer silencieusement le pays d'expédition"
                 )
+            selected.update({
+                "product_cost": _safe_float(landed.get("supplier_cost")),
+                "shipping_cost": _safe_float(landed.get("shipping_cost")),
+                "stock": _safe_int(landed.get("stock")),
+                "shipping_days": _safe_int(landed.get("shipping_days")),
+                "shipping_method": landed.get("freight_name") or "",
+                "warehouse": warehouse,
+                "destination_country": "US",
+                "currency": "USD",
+                "shipping_known": landed.get("shipping_cost") is not None,
+                "requirements": route_requirements(warehouse or "US"),
+            })
+            selected = _score_offer(selected, market_price)
         except Exception as exc:
             warnings.append(f"CJ : {exc}")
-    elif provider == "dropxl" and connection_status("dropxl").get("connected"):
-        try:
-            result = await DropXLClient().search(workflow.get("keyword") or "")
-            match = next(
-                (row for row in result.get("products") or [] if str(row.get("supplier_sku")) == str(selected.get("supplier_sku"))),
-                None,
-            )
-            if match:
-                selected = _euro_offer_from_selected(
-                    selected,
-                    product_cost=_safe_float(match.get("price")),
-                    stock=_safe_int(match.get("stock")),
-                )
-        except Exception as exc:
-            warnings.append(f"DropXL : {exc}")
-    elif selected.get("source_product_id"):
-        product = get_product(int(selected["source_product_id"]))
-        if product:
-            selected = _euro_offer_from_selected(
-                selected,
-                product_cost=_safe_float(product.get("supplier_cost")),
-                stock=_safe_int(product.get("stock")),
-                shipping_days=_safe_int(product.get("shipping_days")),
-            )
+    else:
+        warnings.append("CJ n'est pas connecté ; l'offre n'a pas pu être actualisée")
     return selected, warnings
 
 
@@ -128,13 +124,16 @@ async def monitor_workflow(workflow_id: int) -> dict[str, Any]:
     workflow = get_workflow(workflow_id)
     client = EbayClient()
     keyword = workflow.get("keyword") or ""
-    marketplace = workflow.get("marketplace") or "EBAY_FR"
+    marketplace = workflow.get("marketplace") or "EBAY_US"
+    if marketplace != "EBAY_US":
+        raise ValueError("La surveillance est limitée à eBay US")
     payload = await client.search_items(keyword, 50, marketplace)
     items = payload.get("itemSummaries") or []
     prices = [
         float((row.get("price") or {}).get("value"))
         for row in items
         if _safe_float((row.get("price") or {}).get("value")) is not None
+        and str((row.get("price") or {}).get("currency") or "USD").upper() == "USD"
     ]
     current_market = {
         "total_results": int(payload.get("total") or len(items)),
@@ -144,21 +143,27 @@ async def monitor_workflow(workflow_id: int) -> dict[str, Any]:
     baseline_total = int(opportunity.get("total_results") or 0)
     baseline_price = _safe_float(opportunity.get("median_price"))
     selected_before = workflow.get("selected_offer") or {}
-    selected_after, refresh_warnings = await _refresh_selected_offer(workflow)
+    selected_after, refresh_warnings = await _refresh_selected_offer(
+        workflow,
+        current_market["median_price"],
+    )
     alerts: list[dict[str, str]] = []
     settings = get_settings()
+    requirements = selected_after.get("requirements") or route_requirements(
+        str(selected_after.get("warehouse") or "US")
+    )
 
     old_cost = _safe_float(selected_before.get("product_cost"))
     new_cost = _safe_float(selected_after.get("product_cost"))
     if old_cost and new_cost and new_cost > old_cost * (1 + settings.max_supplier_price_jump_percent / 100):
         alerts.append({"kind": "SUPPLIER_PRICE", "level": "HIGH",
-                       "message": f"Coût fournisseur en hausse : {old_cost:.2f} € → {new_cost:.2f} €"})
+                       "message": f"Coût fournisseur en hausse : {old_cost:.2f} USD → {new_cost:.2f} USD"})
     stock = _safe_int(selected_after.get("stock"))
-    if stock is not None and stock < settings.min_stock:
+    if stock is not None and stock < int(requirements["min_stock"]):
         alerts.append({"kind": "SUPPLIER_STOCK", "level": "HIGH",
                        "message": f"Stock fournisseur faible : {stock}"})
     days = _safe_int(selected_after.get("shipping_days"))
-    if days is not None and days > settings.max_shipping_days:
+    if days is not None and days > int(requirements["max_shipping_days"]):
         alerts.append({"kind": "SUPPLIER_DELAY", "level": "HIGH",
                        "message": f"Délai fournisseur passé à {days} jours"})
     if baseline_total and current_market["total_results"] > baseline_total * 1.30:
@@ -166,10 +171,10 @@ async def monitor_workflow(workflow_id: int) -> dict[str, Any]:
                        "message": f"Concurrence eBay +{(current_market['total_results'] / baseline_total - 1) * 100:.0f}%"})
     if baseline_price and current_market["median_price"] is not None and current_market["median_price"] < baseline_price * 0.85:
         alerts.append({"kind": "MARKET_PRICE", "level": "HIGH",
-                       "message": f"Prix médian eBay en baisse : {baseline_price:.2f} € → {current_market['median_price']:.2f} €"})
+                       "message": f"Prix médian eBay en baisse : {baseline_price:.2f} USD → {current_market['median_price']:.2f} USD"})
     profit = selected_after.get("profit") if isinstance(selected_after.get("profit"), dict) else {}
     margin = _safe_float(profit.get("margin_percent"))
-    if margin is not None and margin < settings.min_margin_percent:
+    if margin is not None and margin < float(requirements["min_margin_percent"]):
         alerts.append({"kind": "MARGIN", "level": "HIGH",
                        "message": f"Marge estimée tombée à {margin:.1f}%"})
 
@@ -207,7 +212,16 @@ async def monitor_enabled_workflows(limit: int = MONITOR_LIMIT) -> dict[str, Any
     _ensure_tables()
     with conn() as database:
         rows = database.execute(
-            "SELECT id FROM opportunity_workflows WHERE monitoring_enabled=1 ORDER BY updated_at DESC LIMIT ?",
+            """
+            SELECT workflow.id
+            FROM opportunity_workflows AS workflow
+            JOIN radar_opportunities AS opportunity ON opportunity.id=workflow.opportunity_id
+            WHERE workflow.monitoring_enabled=1
+              AND workflow.marketplace='EBAY_US'
+              AND opportunity.marketplace='EBAY_US'
+              AND opportunity.currency='USD'
+            ORDER BY workflow.updated_at DESC LIMIT ?
+            """,
             (min(max(int(limit), 1), 100),),
         ).fetchall()
     workflow_ids = [int(row["id"]) for row in rows]
@@ -335,18 +349,19 @@ def launch_readiness() -> dict[str, Any]:
     ensure_radar_tables()
     with conn() as database:
         opportunity_count = int(database.execute(
-            "SELECT COUNT(*) FROM radar_opportunities WHERE dismissed=0"
+            "SELECT COUNT(*) FROM radar_opportunities WHERE dismissed=0 AND marketplace='EBAY_US' AND currency='USD'"
         ).fetchone()[0])
         latest_full = database.execute(
             """
             SELECT * FROM radar_auto_runs
             WHERE trigger IN ('scheduler-full','manual-full','manual')
+              AND marketplace='EBAY_US'
             ORDER BY id DESC LIMIT 1
             """
         ).fetchone()
     backup = verify_latest_backup(False)
     ebay_connected = EbayClient().token_status().get("connected", False)
-    amazon_connected = connection_status("amazon").get("connected", False)
+    cj_connected = CJClient().status().get("connected", False)
     workflow_reports = []
     for workflow in workflows:
         readiness = workflow_readiness(workflow)
@@ -362,12 +377,12 @@ def launch_readiness() -> dict[str, Any]:
             settings.ebay_effective_env == "production" and settings.ebay_client_id and settings.ebay_client_secret
         ), "critical": True},
         {"id": "ebay_oauth", "label": "Compte eBay autorisé", "done": bool(ebay_connected), "critical": True},
+        {"id": "cj", "label": "CJ Dropshipping connecté", "done": bool(cj_connected), "critical": True},
         {"id": "radar_runs", "label": "Plusieurs opportunités Radar", "done": opportunity_count >= 3, "critical": True},
         {"id": "full_scan", "label": "Grand scan réussi", "done": bool(latest_full and latest_full["status"] == "COMPLETED"), "critical": True},
         {"id": "workflow", "label": "Au moins un dossier prêt", "done": any(row["ready"] for row in workflow_reports), "critical": True},
         {"id": "backup", "label": "Sauvegarde intègre", "done": bool(backup.get("ok")), "critical": True},
         {"id": "dry_run", "label": "Écritures eBay verrouillées pendant les tests", "done": not settings.ebay_write_enabled and not settings.ebay_publish_enabled, "critical": True},
-        {"id": "amazon", "label": "Amazon SP-API connecté", "done": bool(amazon_connected), "critical": False},
     ]
     critical_ready = all(item["done"] for item in checks if item["critical"])
     score = round(sum(1 for item in checks if item["done"]) / len(checks) * 100)
@@ -379,7 +394,7 @@ def launch_readiness() -> dict[str, Any]:
         "opportunity_count": opportunity_count,
         "workflow_count": len(workflows),
         "backup": backup,
-        "amazon_optional": not amazon_connected,
+        "operating_mode": "EBAY_US_CJ_ONLY",
         "notice": "La publication réelle reste bloquée tant que les interrupteurs d'écriture eBay sont désactivés.",
     }
 
@@ -392,9 +407,9 @@ def command_center_status() -> dict[str, Any]:
         "monitoring_count": sum(1 for row in workflows if row.get("monitoring_enabled")),
         "ready_count": sum(1 for row in workflows if workflow_readiness(row).get("ready")),
         "stage_counts": dict(stage_counts),
-        "amazon_connected": connection_status("amazon").get("connected", False),
         "cj_connected": CJClient().status().get("connected", False),
-        "dropxl_connected": connection_status("dropxl").get("connected", False),
+        "ebay_connected": EbayClient().token_status().get("connected", False),
+        "operating_mode": "EBAY_US_CJ_ONLY",
         "dry_run": True,
         "stages": [{"id": stage, "label": STAGE_LABELS[stage]} for stage in STAGES],
     }

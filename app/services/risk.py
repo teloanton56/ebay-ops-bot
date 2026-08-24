@@ -9,7 +9,9 @@ def _thresholds_for_product(product: dict) -> tuple[dict, str]:
     settings = get_settings()
     link = load_cj_product_link(str(product.get("supplier_sku") or ""))
     warehouse = str(link.get("warehouse") or "").upper()
-    if warehouse in {"US", "CN"}:
+    destination_country = str(link.get("destination_country") or "").upper()
+    currency = str(link.get("currency") or "").upper()
+    if warehouse in {"US", "CN"} and destination_country == "US" and currency == "USD":
         return route_requirements(warehouse), warehouse
     return {
         "min_margin_percent": settings.min_margin_percent,
@@ -71,6 +73,8 @@ def assess_product(product: dict, supplier: dict | None = None) -> dict:
         warnings.append("Route CJ Chine → US : seuils renforcés appliqués")
     elif warehouse == "US":
         warnings.append("Route CJ US prioritaire")
+    else:
+        blocks.append("Route CJ US/CN non vérifiée")
 
     if not product.get("images"):
         warnings.append("Aucune image")
@@ -85,7 +89,7 @@ def assess_product(product: dict, supplier: dict | None = None) -> dict:
         except (TypeError, ValueError):
             supplier = None
     compliance = assess_compliance(product, supplier)
-    blocks.extend(compliance["blocks"])
+    blocks.extend(compliance["publication_blocks"])
     warnings.extend(compliance["warnings"])
 
     blocks = list(dict.fromkeys(blocks))

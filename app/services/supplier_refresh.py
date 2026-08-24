@@ -18,10 +18,33 @@ def supplier_for_product(product: dict[str, Any]) -> dict[str, Any] | None:
     return get_supplier(int(supplier_id))
 
 
+def is_verified_cj_product(
+    product: dict[str, Any],
+    supplier: dict[str, Any] | None = None,
+) -> bool:
+    if (
+        not product
+        or str(product.get("marketplace_id") or "") != "EBAY_US"
+        or str(product.get("currency") or "").upper() != "USD"
+    ):
+        return False
+    supplier = supplier or supplier_for_product(product)
+    if str((supplier or {}).get("provider_code") or "").casefold() != "cj":
+        return False
+    link = load_cj_product_link(str(product.get("supplier_sku") or ""))
+    return bool(
+        str(link.get("pid") or "").strip()
+        and str(link.get("variant_id") or "").strip()
+        and str(link.get("warehouse") or "").upper() in {"US", "CN"}
+        and str(link.get("destination_country") or "").upper() == "US"
+        and str(link.get("currency") or "").upper() == "USD"
+    )
+
+
 async def refresh_product_from_supplier(product: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Refresh the exact CJ route immediately before a real eBay write.
 
-    v0.23 never switches a live product silently from US to China or vice versa,
+    The bot never switches a live product silently from US to China or vice versa,
     because that would change item location and delivery promises on eBay.
     """
     if not product or not product.get("id"):
@@ -30,14 +53,24 @@ async def refresh_product_from_supplier(product: dict[str, Any]) -> tuple[dict[s
     supplier = supplier_for_product(product)
     code = str((supplier or {}).get("provider_code") or "").strip().lower()
     if code != "cj":
-        raise SupplierRefreshError("v0.23 autorise uniquement CJ Dropshipping avant publication eBay")
+        raise SupplierRefreshError("Seul CJ Dropshipping est autorisé avant publication eBay")
 
     link = load_cj_product_link(str(product.get("supplier_sku") or ""))
     pid = str(link.get("pid") or "").strip()
+    variant_id = str(link.get("variant_id") or "").strip()
     warehouse = str(link.get("warehouse") or "").upper()
-    if not pid or warehouse not in {"US", "CN"}:
+    destination_country = str(link.get("destination_country") or "").upper()
+    currency = str(link.get("currency") or "").upper()
+    if (
+        not pid
+        or not variant_id
+        or warehouse not in {"US", "CN"}
+        or destination_country != "US"
+        or currency != "USD"
+    ):
         raise SupplierRefreshError(
-            "Ce produit n'a pas de route CJ US/CN enregistrée. Relancez-le depuis CJ ou Margin Hunter avant publication."
+            "Ce produit n'a pas de route CJ US/CN vers les États-Unis en USD. "
+            "Relancez-le depuis CJ ou Margin Hunter avant publication."
         )
 
     client = CJClient()
@@ -53,7 +86,7 @@ async def refresh_product_from_supplier(product: dict[str, Any]) -> tuple[dict[s
             client,
             pid,
             fallback_price_usd=0,
-            preferred_variant_id=str(link.get("variant_id") or ""),
+            preferred_variant_id=variant_id,
             preferred_warehouse=warehouse,
             destination_country="US",
             reference_price=target_price,

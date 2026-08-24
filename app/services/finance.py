@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.config import get_settings
 from app.services.profit import order_fee_for_price
+from app.services.supplier_refresh import is_verified_cj_product
 
 
 MILESTONES = (5_000, 10_000, 50_000, 100_000)
@@ -31,7 +32,7 @@ def ebay_series(orders: list[dict], products: list[dict], days: int,
             _day(now - timedelta(days=days - index - 1)) for index in range(days)}
     active_products = [
         product for product in products
-        if product.get("marketplace_id") == "EBAY_US" and product.get("currency") == "USD"
+        if is_verified_cj_product(product)
     ]
     product_by_sku = {str(item.get("supplier_sku") or ""): item for item in active_products}
     known_lines = total_lines = 0

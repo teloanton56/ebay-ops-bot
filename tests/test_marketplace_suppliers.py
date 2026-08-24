@@ -26,7 +26,7 @@ def test_amazon_and_aliexpress_are_not_active_supplier_searches():
     assert 'pattern="^cj$"' in suppliers
 
 
-def test_retired_marketplace_supplier_endpoints_return_gone():
+def test_supplier_flow_schema_rejects_non_cj_providers():
     with TestClient(app) as client:
         for provider in ("amazon", "aliexpress"):
             response = client.post(
@@ -39,7 +39,7 @@ def test_retired_marketplace_supplier_endpoints_return_gone():
                     "currency": "USD",
                 },
             )
-            assert response.status_code == 410
+            assert response.status_code == 422
 
 
 def test_source_search_schema_allows_only_cj():
@@ -53,11 +53,9 @@ def test_source_search_schema_allows_only_cj():
 def test_dormant_marketplace_code_is_not_loaded_by_application_shell():
     main = read("app/main.py").lower()
     worker = read("app/static/service-worker.js").lower()
-    workflow = read("app/static/workflow_cleanup.js").lower()
 
     assert "aliexpress_dropship_search" not in main
     assert "marketplace_supplier_sources" not in main
     assert "amazon" not in worker
     assert "aliexpress" not in worker
-    assert "cj dropshipping" in workflow
-    assert "ebay us" in workflow
+    assert not (ROOT / "app/static/workflow_cleanup.js").exists()

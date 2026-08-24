@@ -1,3 +1,5 @@
+from typing import Literal
+
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -43,7 +45,7 @@ class CJCandidateIn(BaseModel):
 
 class CJAnalyzeIn(BaseModel):
     vid: str = ""
-    destination_country: str = Field(default="US", min_length=2, max_length=2)
+    destination_country: Literal["US"] = "US"
     postcode: str = Field(default="", max_length=12)
 
 
@@ -176,9 +178,6 @@ async def analyze_candidate(candidate_id: int, payload: CJAnalyzeIn):
     candidate = get_cj_candidate(candidate_id)
     if not candidate:
         raise HTTPException(404, "Sélection CJ introuvable")
-    if payload.destination_country.upper() != "US":
-        raise HTTPException(400, "Le mode actif calcule uniquement la livraison vers les États-Unis")
-
     client = CJClient()
     try:
         landed = await resolve_cj_landed_offer(
@@ -242,7 +241,13 @@ def candidate_to_product(candidate_id: int):
     if not candidate:
         raise HTTPException(404, "Sélection CJ introuvable")
     analysis = candidate.get("analysis") or {}
-    if analysis.get("landed_cost_usd") is None:
+    if (
+        analysis.get("landed_cost_usd") is None
+        or str(analysis.get("destination_country") or "").upper() != "US"
+        or str(analysis.get("currency") or "").upper() != "USD"
+        or str(analysis.get("source_country") or "").upper() not in {"US", "CN"}
+        or not str(analysis.get("variant_id") or "").strip()
+    ):
         raise HTTPException(400, "Analysez d'abord le coût livré vers les États-Unis.")
 
     supplier_id = ensure_provider_supplier("cj", "CJ Dropshipping", "US")
@@ -271,6 +276,8 @@ def candidate_to_product(candidate_id: int):
         "pid": candidate["cj_pid"],
         "variant_id": analysis.get("variant_id") or "",
         "warehouse": warehouse,
+        "destination_country": "US",
+        "currency": "USD",
         "risk_flags": candidate.get("risk_flags") or [],
     })
     return {"created": True, "product_id": product_id, "dry_run": True,

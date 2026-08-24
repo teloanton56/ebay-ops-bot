@@ -40,8 +40,8 @@ def test_saving_prd_key_persists_production_environment(tmp_path, monkeypatch):
         client_secret="secret",
         runame="example-runame",
         environment="sandbox",
-        marketplace_id="EBAY_FR",
-        currency="EUR",
+        marketplace_id="EBAY_US",
+        currency="USD",
     )
     result = settings_router.save_ebay_settings(payload)
     assert result["environment"] == "production"

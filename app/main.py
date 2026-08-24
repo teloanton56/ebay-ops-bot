@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.routers import (
-    auth, automation, channels, cj, cloud, compliance, connections, ebay,
+    auth, automation, channels, cj, cloud, compliance, ebay,
     ebay_compliance, finance, opportunity_center, products, radar, research,
     settings, shop_spy, supplier_flow, suppliers, support, taxonomy, ui,
 )
@@ -19,7 +19,7 @@ from app.services.ebay import EbayClient
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.25.2"
+VERSION = "0.25.3"
 BRAND_REV = "ops-swoosh-1"
 
 
@@ -48,7 +48,6 @@ app.include_router(taxonomy.router)
 app.include_router(automation.router)
 app.include_router(settings.router)
 app.include_router(cj.router)
-app.include_router(connections.router)
 app.include_router(finance.router)
 app.include_router(radar.router)
 app.include_router(opportunity_center.router)
@@ -140,12 +139,3 @@ def service_worker():
 @app.get("/offline", response_class=HTMLResponse)
 def offline():
     return FileResponse("app/static/offline.html", media_type="text/html; charset=utf-8")
-
-
-@app.get("/sample_supplier.csv")
-def sample_supplier_csv():
-    return FileResponse(
-        "sample_supplier.csv",
-        media_type="text/csv; charset=utf-8",
-        filename="modele_fournisseur_ebay.csv",
-    )

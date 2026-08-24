@@ -24,15 +24,10 @@ def test_supplier_hub_exposes_exactly_one_active_provider():
     assert data["providers"][0]["capabilities"]["china_fallback"] is True
 
 
-def test_generic_connections_surface_has_no_marketplace_or_social_sources():
+def test_generic_connections_surface_is_removed():
     with TestClient(app) as client:
         response = client.get("/api/connections")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["operating_mode"] == "EBAY_US_CJ_ONLY"
-    assert data["sources"] == []
-    assert data["restricted"] == []
-    assert data["assisted_suppliers"] == []
+    assert response.status_code == 404
 
 
 def test_retired_marketplace_connections_cannot_be_reenabled():
@@ -40,20 +35,15 @@ def test_retired_marketplace_connections_cannot_be_reenabled():
         for provider in ("aliexpress", "amazon", "youtube", "tiktok"):
             save = client.post(f"/api/connections/{provider}", json={})
             test = client.post(f"/api/connections/{provider}/test")
-            assert save.status_code == 410
-            assert test.status_code == 410
+            assert save.status_code == 404
+            assert test.status_code == 404
 
 
-def test_frontend_removes_retired_sources_and_keeps_cj_ebay_copy():
-    cleanup = read("app/static/provider_cleanup.js").lower()
-    workflow = read("app/static/workflow_cleanup.js").lower()
-    connections = read("app/routers/connections.py").lower()
+def test_frontend_cleanup_shims_are_deleted_and_supplier_hub_is_cj_only():
     suppliers = read("app/routers/suppliers.py").lower()
 
-    for retired in ("amazon", "aliexpress", "youtube", "tiktok"):
-        assert retired in cleanup
-        assert retired in connections
-    assert "cj dropshipping" in workflow
-    assert "ebay us" in workflow
+    assert not (ROOT / "app/static/provider_cleanup.js").exists()
+    assert not (ROOT / "app/static/workflow_cleanup.js").exists()
+    assert not (ROOT / "app/routers/connections.py").exists()
     assert '"providers": [provider]' in suppliers
     assert '"operating_mode": "ebay_us_cj_only"' in suppliers

@@ -91,6 +91,7 @@ def test_auto_analysis_preserves_operator_target_price(monkeypatch):
     ))
     monkeypatch.setattr(analyzer, "EbayClient", FakeClient)
     monkeypatch.setattr(analyzer, "list_products", lambda: [dict(state)])
+    monkeypatch.setattr(analyzer, "is_verified_cj_product", lambda product: True)
     monkeypatch.setattr(analyzer, "get_product", lambda product_id: dict(state))
     monkeypatch.setattr(analyzer, "set_product_fields", fake_set)
     monkeypatch.setattr(analyzer, "start_analysis_run", lambda *args: 1)
@@ -190,7 +191,7 @@ def test_unified_cj_resolver_prefers_us_route_and_uses_usd_without_conversion():
     assert "resolve_cj_landed_offer" in refresh
 
 
-def test_compliance_engine_still_blocks_risky_products_and_retail_marketplace_fulfillment():
+def test_compliance_engine_blocks_risky_products_and_non_cj_fulfillment():
     generic = {
         "title": "Drawer organizer kitchen storage",
         "description": "Plastic organizer",
@@ -199,7 +200,12 @@ def test_compliance_engine_still_blocks_risky_products_and_retail_marketplace_fu
     }
     generic_assessment = assess_compliance(generic)
     assert generic_assessment["pass"] is True
-    assert generic_assessment["publication_pass"] is True
+    assert generic_assessment["publication_pass"] is False
+    assert any("seul fournisseur autorisé" in block.lower() for block in generic_assessment["publication_blocks"])
+
+    cj_assessment = assess_compliance(generic, {"provider_code": "cj", "name": "CJ Dropshipping"})
+    assert cj_assessment["pass"] is True
+    assert cj_assessment["publication_pass"] is True
 
     spy_camera = assess_compliance({**generic, "title": "Mini spy camera surveillance hidden camera"})
     assert spy_camera["pass"] is False
@@ -209,10 +215,10 @@ def test_compliance_engine_still_blocks_risky_products_and_retail_marketplace_fu
     assert counterfeit["pass"] is False
     assert any("contrefaçon" in block.lower() for block in counterfeit["blocks"])
 
-    amazon = assess_compliance(generic, {"provider_code": "amazon", "name": "Amazon"})
-    assert amazon["pass"] is True
-    assert amazon["publication_pass"] is False
-    assert any("publication directe bloquée" in block.lower() for block in amazon["publication_blocks"])
+    other = assess_compliance(generic, {"provider_code": "other", "name": "Other"})
+    assert other["pass"] is True
+    assert other["publication_pass"] is False
+    assert any("seul fournisseur autorisé" in block.lower() for block in other["publication_blocks"])
 
 
 def test_ebay_notification_signature_is_cryptographically_verified():

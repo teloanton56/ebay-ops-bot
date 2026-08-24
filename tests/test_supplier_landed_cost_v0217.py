@@ -31,8 +31,8 @@ def test_margin_hunter_supplier_add_and_refresh_share_same_cj_resolver():
 
 def test_supplier_flow_has_no_generic_marketplace_logistics_path_anymore():
     source = read("app/routers/supplier_flow.py").lower()
-    assert 'payload.provider.strip().lower() != "cj"' in source
-    assert "utilise uniquement cj dropshipping" in source
+    assert 'provider: literal["cj"]' in source
+    assert 'payload.provider.strip().lower() != "cj"' not in source
     assert "aliexpress" not in source
     assert "amazon" not in source
 

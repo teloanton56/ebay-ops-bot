@@ -1,4 +1,4 @@
-eBay Ops Bot v0.14.3
+eBay US · CJ Ops Bot v0.25.3
 =====================
 
 WINDOWS :
@@ -8,6 +8,9 @@ WINDOWS :
 4) Garder la fenetre noire ouverte.
 
 Tu n'as plus besoin d'ouvrir Swagger / API Docs ou de modifier du code.
+
+Le bot utilise uniquement eBay US, USD et CJ Dropshipping. L'entrepôt CJ US
+est prioritaire ; la Chine n'est utilisée que si les seuils renforcés passent.
 
 En cas de souci : lance DIAGNOSTIC_WINDOWS.bat et ouvre diagnostic.txt.
 

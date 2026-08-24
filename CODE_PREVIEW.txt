@@ -1,29 +1,20 @@
-eBay Ops Bot v0.14.3 — structure principale
+eBay US · CJ Ops Bot v0.25.3 — structure principale
 
-app/main.py                 FastAPI + dashboard + health
-app/static/app.js           logique complète de l'interface
-app/static/app.css          design responsive
-app/templates/dashboard.html interface utilisateur
-app/routers/products.py     produits / CSV / fiches
-app/routers/research.py     Données eBay Production uniquement
-app/routers/auth.py         OAuth eBay
-app/routers/ebay.py         listings / commandes / tracking
-app/routers/settings.py     paramètres eBay + Risk Engine
-app/routers/suppliers.py    gestion des fournisseurs
-app/routers/cj.py           connexion, recherche et sélection CJ
-app/routers/connections.py  centre de connexions officielles
-app/routers/finance.py      chiffre d'affaires, résultat et objectifs
-app/routers/radar.py        Radar 360, surveillance et devis usines
-app/routers/ui.py           résumé dashboard + diagnostics
-app/services/ebay.py        client API eBay
-app/services/cj.py          client officiel CJ en lecture seule
-app/services/connections.py tendances, DropXL et fournisseurs POD
-app/services/finance.py     agrégation des ventes réelles / commandes eBay
-app/services/radar.py       sources, relevés multi-pays et RFQ
-app/services/risk.py        règles de sécurité
-app/services/profit.py      calcul de rentabilité
-app/services/db.py          base SQLite locale
+app/main.py                    FastAPI, dashboard et /health
+app/templates/dashboard.html  interface eBay US / CJ
+app/static/simple_ui.js        parcours guidé Radar → CJ → Produit → eBay
+app/routers/cj.py              connexion, recherche et sélection CJ
+app/routers/radar.py           mesures eBay US et correspondances CJ
+app/routers/products.py        catalogue CJ vérifié en EBAY_US / USD
+app/routers/ebay.py            annonces, commandes et suivi eBay US
+app/routers/settings.py        paramètres eBay US et Risk Engine
+app/services/cj.py             client officiel CJ
+app/services/cj_landed.py      routes CJ US prioritaires et Chine rentable
+app/services/ebay.py           client officiel eBay verrouillé sur EBAY_US
+app/services/risk.py           règles stock, délai, marge et conformité
+app/services/profit.py         rentabilité en USD
+app/services/db.py             stockage SQLite
 
-LANCER_BOT.bat              installation/réparation + lancement automatique
-DIAGNOSTIC_WINDOWS.bat      diagnostic utilisateur
-REPAIR_WINDOWS.bat          réparation environnement Python
+README.md                      installation, configuration et validation
+DIAGNOSTIC_WINDOWS.bat         diagnostic utilisateur
+REPAIR_WINDOWS.bat            réparation de l'environnement Python

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from app.services.compliance import assess_compliance, load_compliance_review, save_compliance_review
 from app.services.db import get_product, get_supplier
+from app.services.supplier_refresh import is_verified_cj_product
 
 
 router = APIRouter(prefix="/api/compliance", tags=["Compliance"])
@@ -18,6 +19,8 @@ def _product_and_supplier(product_id: int):
     if not product:
         raise HTTPException(404, "Produit introuvable")
     supplier = get_supplier(int(product["supplier_id"])) if product.get("supplier_id") else None
+    if not is_verified_cj_product(product, supplier):
+        raise HTTPException(410, "Produit hors flux CJ vérifié pour eBay US / USD")
     return product, supplier
 
 

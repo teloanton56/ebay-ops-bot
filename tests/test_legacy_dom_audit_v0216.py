@@ -3,9 +3,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_legacy_cleanup_file_remains_available_only_for_history():
-    source = (ROOT / "app/static/provider_cleanup.js").read_text(encoding="utf-8")
-    assert "removeRetiredCards" in source
+def test_legacy_cleanup_file_is_deleted():
+    assert not (ROOT / "app/static/provider_cleanup.js").exists()
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     dashboard = (ROOT / "app/templates/dashboard.html").read_text(encoding="utf-8")
     assert "provider_cleanup.js" not in main

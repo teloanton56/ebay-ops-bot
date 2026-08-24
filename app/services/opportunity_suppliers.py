@@ -1,275 +1,214 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 
-from app.config import get_settings
 from app.services.cj import CJClient
-from app.services.connections import DropXLClient, connection_status
-from app.services.db import list_products, list_suppliers, utc_now
-from app.services.marketplace_supplier_sources import aliexpress_supplier_offers, amazon_supplier_offers
+from app.services.cj_landed import resolve_cj_landed_offer, route_requirements
+from app.services.db import utc_now
 from app.services.profit import suggest_price
 from app.services.opportunity_store import (
-    CJ_DEEP_LIMIT, _add_event, _days_from_text, _limited, _match_strength,
-    _offer_key, _safe_float, _safe_int, _update_workflow, get_workflow,
+    CJ_DEEP_LIMIT,
+    _add_event,
+    _limited,
+    _match_strength,
+    _offer_key,
+    _safe_float,
+    _safe_int,
+    _update_workflow,
+    get_workflow,
 )
 
-def _manual_offers(keyword: str) -> list[dict[str, Any]]:
-    suppliers = {row["id"]: row for row in list_suppliers()}
-    offers = []
-    for product in list_products():
-        strength = _match_strength(keyword, product.get("title") or "")
-        if strength < 0.5:
-            continue
-        supplier = suppliers.get(product.get("supplier_id")) or {}
-        images = product.get("images") or []
-        offers.append({
-            "provider": supplier.get("name") or "Catalogue local",
-            "provider_code": supplier.get("provider_code") or "manual",
-            "supplier_sku": product.get("supplier_sku") or str(product.get("id")),
-            "variant_id": "",
-            "name": product.get("title") or keyword,
-            "product_cost": _safe_float(product.get("supplier_cost")),
-            "shipping_cost": _safe_float(product.get("shipping_cost")),
-            "currency": product.get("currency") or "EUR",
-            "stock": _safe_int(product.get("stock")),
-            "shipping_days": _safe_int(product.get("shipping_days")),
-            "warehouse": supplier.get("country") or "",
-            "image_url": images[0] if images else "",
-            "reliability_score": _safe_float(supplier.get("reliability_score")),
-            "compliance_flags": [],
-            "evidence": [
-                "Coût et stock issus du catalogue local",
-                "Transport et conformité à revalider avant publication",
-            ],
-            "shipping_known": product.get("shipping_cost") is not None,
-            "source_product_id": product.get("id"),
-            "match_strength": round(strength, 2),
-        })
-    return offers[:20]
 
-
-async def _dropxl_offers(keyword: str) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    if not connection_status("dropxl").get("connected"):
-        return [], []
-    try:
-        payload = await DropXLClient().search(keyword)
-    except Exception as exc:
-        return [], [{"source": "DropXL", "message": str(exc)}]
-    offers = []
-    for product in payload.get("products") or []:
-        offers.append({
-            "provider": "DropXL / vidaXL",
-            "provider_code": "dropxl",
-            "supplier_sku": str(product.get("supplier_sku") or ""),
-            "variant_id": "",
-            "name": product.get("name") or keyword,
-            "product_cost": _safe_float(product.get("price")),
-            "shipping_cost": None,
-            "currency": product.get("currency") or "EUR",
-            "stock": _safe_int(product.get("stock")),
-            "shipping_days": None,
-            "warehouse": "EU",
-            "image_url": product.get("image_url") or "",
-            "reliability_score": None,
-            "compliance_flags": [],
-            "evidence": list(product.get("quality_evidence") or []) + [
-                "Frais et délai vers la France à confirmer auprès de DropXL"
-            ],
-            "shipping_known": False,
-            "match_strength": round(_match_strength(keyword, product.get("name") or ""), 2),
-        })
-    return offers, []
-
-
-async def _cj_offers(keyword: str) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+async def _cj_offers(
+    keyword: str,
+    market_price: float | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     client = CJClient()
     if not client.status().get("connected"):
-        return [], []
-    errors: list[dict[str, str]] = []
+        return [], [{"source": "CJ", "message": "CJ n'est pas connecté"}]
     try:
-        result = await client.search_products(keyword=keyword, size=10, min_stock=1)
+        result = await client.search_products(keyword=keyword, size=12, min_stock=0)
     except Exception as exc:
         return [], [{"source": "CJ", "message": str(exc)}]
-    try:
-        exchange = await client.usd_to_eur()
-        usd_eur = float(exchange["rate"])
-        exchange_note = f"Conversion USD/EUR BCE du {exchange.get('date') or 'jour'}"
-    except Exception as exc:
-        usd_eur = 0.0
-        exchange_note = "Taux USD/EUR indisponible"
-        errors.append({"source": "CJ taux de change", "message": str(exc)})
 
     products = (result.get("products") or [])[:CJ_DEEP_LIMIT]
 
     async def enrich(product: dict[str, Any]) -> dict[str, Any]:
-        detail = await client.product_detail(str(product.get("cj_pid") or ""))
-        variants = [row for row in detail.get("variants") or [] if int(row.get("stock") or 0) > 0]
-        variant = variants[0] if variants else (detail.get("variants") or [{}])[0]
-        variant_id = str(variant.get("vid") or "")
-        freight: list[dict[str, Any]] = []
-        start_country = next(
-            (
-                str(row.get("country_code") or "CN")
-                for row in variant.get("inventories") or []
-                if int(row.get("stock") or 0) > 0
-            ),
-            "CN",
+        landed = await resolve_cj_landed_offer(
+            client,
+            str(product.get("cj_pid") or ""),
+            fallback_price_usd=float(product.get("price_usd") or 0),
+            destination_country="US",
+            reference_price=market_price,
         )
-        if variant_id:
-            try:
-                freight = await client.freight_options(
-                    variant_id,
-                    start_country=start_country,
-                    destination_country="FR",
-                    postcode=get_settings().ebay_location_postal_code or "",
-                )
-            except Exception as exc:
-                errors.append({"source": "CJ transport", "message": str(exc)})
-        best_freight = freight[0] if freight else {}
-        product_usd = _safe_float(variant.get("price_usd")) or _safe_float(product.get("price_usd"))
-        shipping_usd = _safe_float(best_freight.get("price_usd"))
-        product_eur = round(product_usd * usd_eur, 2) if product_usd is not None and usd_eur else None
-        shipping_eur = round(shipping_usd * usd_eur, 2) if shipping_usd is not None and usd_eur else None
+        warehouse = str(landed.get("warehouse") or "").upper()
         return {
             "provider": "CJ Dropshipping",
             "provider_code": "cj",
-            "supplier_sku": str(product.get("sku") or detail.get("sku") or product.get("cj_pid") or ""),
-            "cj_pid": str(product.get("cj_pid") or detail.get("pid") or ""),
-            "variant_id": variant_id,
-            "name": variant.get("name") or detail.get("name") or product.get("name") or keyword,
-            "product_cost": product_eur,
-            "shipping_cost": shipping_eur,
-            "currency": "EUR" if usd_eur else "USD",
-            "raw_product_cost_usd": product_usd,
-            "raw_shipping_cost_usd": shipping_usd,
-            "stock": _safe_int(variant.get("stock")) or _safe_int(product.get("stock")),
-            "shipping_days": _days_from_text(best_freight.get("delivery_days")),
-            "shipping_method": best_freight.get("name") or "",
-            "warehouse": start_country,
-            "image_url": variant.get("image_url") or detail.get("image_url") or product.get("image_url") or "",
-            "reliability_score": None,
-            "compliance_flags": list(detail.get("risk_flags") or []),
+            "supplier_sku": str(product.get("sku") or landed.get("variant_sku") or landed.get("pid") or ""),
+            "cj_pid": str(product.get("cj_pid") or landed.get("pid") or ""),
+            "variant_id": str(landed.get("variant_id") or ""),
+            "name": landed.get("variant_name") or landed.get("product_name") or product.get("name") or keyword,
+            "product_cost": _safe_float(landed.get("supplier_cost")),
+            "shipping_cost": _safe_float(landed.get("shipping_cost")),
+            "currency": "USD",
+            "stock": _safe_int(landed.get("stock")),
+            "shipping_days": _safe_int(landed.get("shipping_days")),
+            "shipping_method": landed.get("freight_name") or "",
+            "warehouse": warehouse,
+            "destination_country": "US",
+            "image_url": landed.get("image_url") or product.get("image_url") or "",
+            "compliance_flags": list(landed.get("risk_flags") or []),
             "evidence": [
-                "Prix, variante et stock observés chez CJ",
-                exchange_note,
-                "Transport calculé vers la France" if best_freight else "Transport CJ non disponible",
-                "Échantillon et documents de conformité à valider",
+                "Variante et stock vérifiés avec CJ",
+                f"Transport {warehouse or 'CJ'} vers les États-Unis calculé en USD",
+                "Entrepôt US prioritaire ; Chine retenue uniquement avec les seuils renforcés",
             ],
-            "shipping_known": shipping_eur is not None,
-            "match_strength": round(_match_strength(keyword, detail.get("name") or product.get("name") or ""), 2),
+            "shipping_known": landed.get("shipping_cost") is not None,
+            "match_strength": round(
+                _match_strength(keyword, landed.get("product_name") or product.get("name") or ""),
+                2,
+            ),
         }
 
     raw = await _limited([enrich(product) for product in products], concurrency=2)
-    offers = []
+    offers: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
     for product, item in zip(products, raw):
         if isinstance(item, Exception):
-            errors.append({"source": "CJ", "message": str(item), "product": product.get("name")})
+            errors.append(
+                {
+                    "source": "CJ",
+                    "message": str(item),
+                    "product": str(product.get("name") or ""),
+                }
+            )
         else:
             offers.append(item)
     return offers, errors
 
 
 def _score_offer(offer: dict[str, Any], market_price: float | None) -> dict[str, Any]:
-    product_cost = _safe_float(offer.get("product_cost"))
-    shipping_cost = _safe_float(offer.get("shipping_cost"))
-    shipping_known = bool(offer.get("shipping_known") and shipping_cost is not None)
-    landed_cost = round(product_cost + shipping_cost, 2) if product_cost is not None and shipping_known else None
-    target = None
-    profit = None
-    if landed_cost is not None:
-        product = {
-            "supplier_cost": product_cost,
-            "shipping_cost": shipping_cost,
-            "target_price": market_price or 0,
-        }
-        suggestion = suggest_price(product, market_price)
-        target = suggestion["suggested_price"]
-        profit = suggestion["profit"]
-
     blocks: list[str] = []
     warnings: list[str] = []
     points = 0.0
-    if profit:
+
+    provider_code = str(offer.get("provider_code") or "").casefold()
+    if provider_code != "cj":
+        blocks.append("Seules les offres CJ Dropshipping sont autorisées")
+    if not str(offer.get("cj_pid") or "").strip():
+        blocks.append("Identifiant produit CJ manquant")
+    if not str(offer.get("variant_id") or "").strip():
+        blocks.append("Variante CJ non vérifiée")
+
+    currency = str(offer.get("currency") or "").upper()
+    if currency != "USD":
+        blocks.append("La devise fournisseur doit être USD")
+
+    destination_country = str(offer.get("destination_country") or "").upper()
+    if destination_country != "US":
+        blocks.append("La destination de livraison doit être US")
+
+    warehouse = str(offer.get("warehouse") or "").upper()
+    if warehouse not in {"US", "CN"}:
+        blocks.append("Entrepôt CJ non autorisé")
+        requirements = route_requirements("US")
+    else:
+        requirements = route_requirements(warehouse)
+        points += 12 if warehouse == "US" else 6
+        if warehouse == "CN":
+            warnings.append("Route Chine : seuils renforcés appliqués")
+
+    product_cost = _safe_float(offer.get("product_cost"))
+    shipping_cost = _safe_float(offer.get("shipping_cost"))
+    shipping_known = bool(offer.get("shipping_known") and shipping_cost is not None)
+    landed_cost = (
+        round(product_cost + shipping_cost, 2)
+        if product_cost is not None and shipping_known
+        else None
+    )
+    target = None
+    profit = None
+    if landed_cost is None:
+        blocks.append("Coût livré US inconnu")
+    else:
+        suggestion = suggest_price(
+            {
+                "supplier_cost": product_cost,
+                "shipping_cost": shipping_cost,
+                "target_price": market_price or 0,
+            },
+            market_price,
+            min_margin_percent=float(requirements["min_margin_percent"]),
+            min_profit=float(requirements["min_profit"]),
+        )
+        target = suggestion["suggested_price"]
+        profit = suggestion["profit"]
         margin = float(profit.get("margin_percent") or -100)
         estimated_profit = float(profit.get("estimated_profit") or -100)
         roi = float(profit.get("roi_percent") or 0)
-        points += min(max(margin, 0) / 25 * 22, 22)
-        points += min(max(estimated_profit, 0) / 10 * 10, 10)
-        points += min(max(roi, 0) / 100 * 8, 8)
-        settings = get_settings()
-        if margin < settings.min_margin_percent:
-            blocks.append(f"Marge {margin:.1f}% sous le minimum")
-        if estimated_profit < settings.min_profit_eur:
-            blocks.append(f"Profit {estimated_profit:.2f} € sous le minimum")
-    else:
-        blocks.append("Coût livré inconnu")
+        points += min(max(margin, 0) / 35 * 25, 25)
+        points += min(max(estimated_profit, 0) / 12 * 15, 15)
+        points += min(max(roi, 0) / 100 * 10, 10)
+        if margin < float(requirements["min_margin_percent"]):
+            blocks.append(
+                f"Marge {margin:.1f}% sous le minimum {float(requirements['min_margin_percent']):.1f}%"
+            )
+        if estimated_profit < float(requirements["min_profit"]):
+            blocks.append(
+                f"Profit {estimated_profit:.2f} USD sous le minimum {float(requirements['min_profit']):.2f} USD"
+            )
 
     shipping_days = _safe_int(offer.get("shipping_days"))
-    if shipping_days is None:
-        warnings.append("Délai non fourni")
-    elif shipping_days <= 3:
-        points += 15
-    elif shipping_days <= 7:
-        points += 12
-    elif shipping_days <= 12:
-        points += 7
+    max_days = int(requirements["max_shipping_days"])
+    if shipping_days is None or shipping_days <= 0:
+        blocks.append("Délai CJ non confirmé")
+    elif shipping_days > max_days:
+        blocks.append(f"Délai {shipping_days} jours au-dessus du maximum {max_days}")
     else:
-        points += 1
-        blocks.append(f"Délai {shipping_days} jours trop long")
+        points += max(2, 12 - max(shipping_days - 2, 0))
 
     stock = _safe_int(offer.get("stock"))
-    if stock is None:
-        warnings.append("Stock non fourni")
-    elif stock <= 0:
-        blocks.append("Rupture de stock")
-    elif stock < 3:
-        points += 3
-        warnings.append("Stock très faible")
-    elif stock < 20:
-        points += 9
+    min_stock = int(requirements["min_stock"])
+    if stock is None or stock < min_stock:
+        blocks.append(
+            f"Stock {stock if stock is not None else 'inconnu'} sous le minimum {min_stock}"
+        )
     else:
-        points += 15
-
-    reliability = _safe_float(offer.get("reliability_score"))
-    if reliability is not None:
-        points += min(max(reliability, 0) / 100 * 10, 10)
-    else:
-        points += 4 if offer.get("provider_code") in {"cj", "dropxl"} else 2
+        points += min(10, 5 + (stock - min_stock) / max(min_stock, 1) * 5)
 
     high_flags = [
-        flag for flag in offer.get("compliance_flags") or []
+        flag
+        for flag in offer.get("compliance_flags") or []
         if str(flag.get("level") or "").casefold() == "high"
     ]
     medium_flags = [
-        flag for flag in offer.get("compliance_flags") or []
+        flag
+        for flag in offer.get("compliance_flags") or []
         if str(flag.get("level") or "").casefold() == "medium"
     ]
     if high_flags:
         blocks.extend(str(flag.get("label") or flag.get("code")) for flag in high_flags)
-    elif medium_flags:
-        points += 4
-        warnings.extend(str(flag.get("label") or flag.get("code")) for flag in medium_flags)
     else:
-        points += 10
+        points += 7
+    warnings.extend(str(flag.get("label") or flag.get("code")) for flag in medium_flags)
 
-    evidence_count = len(offer.get("evidence") or [])
-    points += min(evidence_count * 2, 10)
-    if not offer.get("image_url"):
-        warnings.append("Image fournisseur absente")
+    points += min(len(offer.get("evidence") or []) * 2, 6)
+    points += min(max(float(offer.get("match_strength") or 0), 0) * 5, 5)
+    if offer.get("image_url"):
+        points += 5
+    else:
+        warnings.append("Image CJ absente")
 
     score = round(max(0, min(points - len(blocks) * 12, 100)))
     return {
         **offer,
-        "offer_key": _offer_key(
-            str(offer.get("provider_code") or offer.get("provider") or "supplier"),
-            str(offer.get("supplier_sku") or ""),
-            str(offer.get("variant_id") or ""),
-        ),
+        "offer_key": _offer_key("cj", str(offer.get("supplier_sku") or ""), str(offer.get("variant_id") or "")),
         "landed_cost": landed_cost,
         "suggested_price": target,
         "profit": profit,
+        "requirements": requirements,
         "decision_score": score,
         "blocks": list(dict.fromkeys(blocks)),
         "warnings": list(dict.fromkeys(warnings)),
@@ -279,38 +218,36 @@ def _score_offer(offer: dict[str, Any], market_price: float | None) -> dict[str,
 
 async def compare_suppliers(workflow_id: int) -> dict[str, Any]:
     workflow = get_workflow(workflow_id)
+    if workflow.get("marketplace") != "EBAY_US" or workflow.get("currency") != "USD":
+        raise ValueError("Le dossier doit appartenir à eBay US et utiliser USD")
     keyword = workflow["keyword"]
     market_price = _safe_float(workflow.get("opportunity", {}).get("median_price"))
-    manual = _manual_offers(keyword)
-    (dropxl, dropxl_errors), (cj, cj_errors), (amazon, amazon_errors), (aliexpress, aliexpress_errors) = await asyncio.gather(
-        _dropxl_offers(keyword),
-        _cj_offers(keyword),
-        amazon_supplier_offers(keyword),
-        aliexpress_supplier_offers(keyword),
+    cj_offers, cj_errors = await _cj_offers(keyword, market_price)
+    scored = [_score_offer(offer, market_price) for offer in cj_offers]
+    scored.sort(
+        key=lambda row: (bool(row.get("eligible")), float(row.get("decision_score") or 0)),
+        reverse=True,
     )
-    scored = [
-        _score_offer(offer, market_price)
-        for offer in [*manual, *dropxl, *cj, *amazon, *aliexpress]
-    ]
-    scored.sort(key=lambda row: (bool(row.get("eligible")), float(row.get("decision_score") or 0)), reverse=True)
-    recommendation = next((row for row in scored if row.get("eligible")), scored[0] if scored else None)
+    recommendation = next(
+        (row for row in scored if row.get("eligible")),
+        scored[0] if scored else None,
+    )
     snapshot = {
         "keyword": keyword,
         "observed_at": utc_now(),
+        "marketplace": "EBAY_US",
         "market_price": market_price,
+        "currency": "USD",
+        "destination_country": "US",
         "offers": scored,
         "recommendation_key": recommendation.get("offer_key") if recommendation else None,
-        "errors": [*dropxl_errors, *cj_errors, *amazon_errors, *aliexpress_errors],
-        "sources": {
-            "manual": len(manual),
-            "dropxl": len(dropxl),
-            "cj": len(cj),
-            "amazon": len(amazon),
-            "aliexpress": len(aliexpress),
-        },
+        "errors": cj_errors,
+        "sources": {"cj": len(cj_offers)},
+        "operating_mode": "EBAY_US_CJ_ONLY",
         "meaning": (
-            "Le classement compare uniquement les coûts et preuves observés. Une offre dont le transport est inconnu "
-            "reste bloquée jusqu'à validation."
+            "Le classement utilise uniquement les variantes CJ, leur stock par entrepôt et le "
+            "transport mesuré vers les États-Unis. La route US est prioritaire ; la Chine doit "
+            "respecter des seuils de marge, profit, stock et délai renforcés."
         ),
     }
     _update_workflow(
@@ -320,7 +257,7 @@ async def compare_suppliers(workflow_id: int) -> dict[str, Any]:
     _add_event(
         workflow_id,
         "SUPPLIER_COMPARISON",
-        f"{len(scored)} offre(s) fournisseur comparée(s)",
+        f"{len(scored)} offre(s) CJ comparée(s)",
         payload={"sources": snapshot["sources"], "errors": snapshot["errors"]},
     )
     return get_workflow(workflow_id)["supplier_snapshot"]
@@ -331,7 +268,15 @@ def select_supplier_offer(workflow_id: int, offer_key: str) -> dict[str, Any]:
     offers = workflow.get("supplier_snapshot", {}).get("offers") or []
     offer = next((row for row in offers if row.get("offer_key") == offer_key), None)
     if not offer:
-        raise ValueError("Offre fournisseur introuvable dans la dernière comparaison")
+        raise ValueError("Offre CJ introuvable dans la dernière comparaison")
+    if (
+        str(offer.get("provider_code") or "").casefold() != "cj"
+        or str(offer.get("currency") or "").upper() != "USD"
+        or str(offer.get("destination_country") or "").upper() != "US"
+        or not str(offer.get("cj_pid") or "").strip()
+        or not str(offer.get("variant_id") or "").strip()
+    ):
+        raise ValueError("Seules les offres CJ en USD livrées aux États-Unis sont autorisées")
     stage = "MARGIN_VALIDATED" if offer.get("eligible") and offer.get("profit") else "SOURCED"
     updated = _update_workflow(
         workflow_id,
@@ -342,7 +287,7 @@ def select_supplier_offer(workflow_id: int, offer_key: str) -> dict[str, Any]:
     _add_event(
         workflow_id,
         "SUPPLIER_SELECTED",
-        f"Offre {offer.get('provider')} sélectionnée",
+        "Offre CJ sélectionnée",
         payload={"offer_key": offer_key, "score": offer.get("decision_score")},
     )
     return updated

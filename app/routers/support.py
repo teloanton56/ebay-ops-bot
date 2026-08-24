@@ -16,7 +16,7 @@ Category = Literal["Retard de livraison", "Retour / remboursement", "Produit end
 
 
 class SupportCaseIn(BaseModel):
-    marketplace: str = Field(default="EBAY", min_length=2, max_length=30)
+    marketplace: Literal["EBAY_US"] = "EBAY_US"
     order_ref: str = Field(default="", max_length=100)
     buyer_alias: str = Field(default="", max_length=100)
     subject: str = Field(min_length=2, max_length=200)

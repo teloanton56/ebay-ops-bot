@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -15,12 +17,12 @@ CJ_VISIBLE_RESULTS = 60
 
 
 class OfferIn(BaseModel):
-    provider: str = Field(default="cj", min_length=2, max_length=40)
+    provider: Literal["cj"] = "cj"
     supplier_sku: str = Field(min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=300)
     price: float = Field(ge=0)
     shipping_cost: float | None = Field(default=None, ge=0)
-    currency: str = Field(default="USD", min_length=3, max_length=3)
+    currency: Literal["USD"] = "USD"
     stock: int | None = Field(default=None, ge=0)
     shipping_days: int | None = Field(default=None, ge=0)
     image_url: str = Field(default="", max_length=1200)
@@ -119,7 +121,7 @@ def _supplier_for_cj() -> int:
         "email": "",
         "website": "https://cjdropshipping.com/",
         "country": "US",
-        "notes": "Fournisseur unique v0.23 : US prioritaire, Chine en fallback rentable.",
+        "notes": "Fournisseur unique : US prioritaire, Chine en fallback rentable.",
         "provider_code": "cj",
         "supplier_type": "API",
         "catalog_url": "",
@@ -220,8 +222,6 @@ async def _add_cj_offer(payload: OfferIn, supplier_id: int, sku: str) -> dict:
 
 @router.post("/add")
 async def add_offer(payload: OfferIn):
-    if payload.provider.strip().lower() != "cj":
-        raise HTTPException(410, "v0.23 utilise uniquement CJ Dropshipping comme fournisseur actif")
     supplier_id = _supplier_for_cj()
     sku = f"CJ-{payload.supplier_sku}"[:50]
     return await _add_cj_offer(payload, supplier_id, sku)

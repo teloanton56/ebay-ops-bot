@@ -9,11 +9,10 @@ from pathlib import Path
 from app.config import get_settings
 from app.services.backups import list_backups
 from app.services.cj import CJClient
-from app.services.connections import connection_statuses
 from app.services.db import conn
 from app.services.ebay import EbayClient
 
-VERSION = "0.14.3"
+VERSION = "0.25.3"
 
 TABLES = {
     "Produits": "products",
@@ -24,8 +23,6 @@ TABLES = {
     "Produits CJ sélectionnés": "cj_candidates",
     "Surveillances Radar": "radar_watchlist",
     "Relevés Radar": "radar_scans",
-    "Contacts fabricants": "factory_leads",
-    "Brouillons RFQ": "rfq_requests",
     "Dossiers SAV": "support_cases",
 }
 
@@ -61,24 +58,17 @@ def _database_facts() -> tuple[str, dict[str, int], int, dict | None, int]:
 def _safe_connections() -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     try:
-        for item in connection_statuses():
-            if item.get("recovery_required"):
-                status = "À reconnecter"
-            elif item.get("connected"):
-                status = "Connecté et vérifié"
-            elif item.get("configured"):
-                status = "Configuré, test requis"
-            else:
-                status = "Non configuré"
-            rows.append((str(item.get("name") or item.get("id") or "Source"), status))
-    except Exception:
-        rows.append(("Sources externes", "Vérification indisponible"))
-    try:
         cj = CJClient().status()
         cj_status = "Connecté" if cj.get("connected") else "À reconnecter" if cj.get("recovery_required") else "Configuré, test requis" if cj.get("configured") else "Non configuré"
     except Exception:
         cj_status = "Vérification indisponible"
     rows.append(("CJ Dropshipping", cj_status))
+    try:
+        ebay = EbayClient().token_status()
+        ebay_status = "Connecté" if ebay.get("connected") else "Non connecté"
+    except Exception:
+        ebay_status = "Vérification indisponible"
+    rows.append(("eBay US", ebay_status))
     return sorted(rows, key=lambda row: row[0].casefold())
 
 
@@ -150,7 +140,7 @@ def build_safe_diagnostic() -> tuple[str, str]:
         "RISK ENGINE",
         "-----------",
         f"Marge minimum : {settings.min_margin_percent} %",
-        f"Profit minimum : {settings.min_profit_eur} EUR",
+        f"Profit minimum : {settings.min_profit_usd} USD",
         f"Stock minimum : {settings.min_stock}",
         f"Délai maximum : {settings.max_shipping_days} jours",
     ])

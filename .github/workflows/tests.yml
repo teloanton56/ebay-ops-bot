@@ -16,21 +16,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
           cache: pip
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Check JavaScript syntax
         run: |
-          node --check app/static/provider_cleanup.js
-          node --check app/static/workflow_cleanup.js
+          node --check app/static/simple_ui.js
+          node --check app/static/service-worker.js
           node --check app/static/supplier_flow_v2.js
           node --check app/static/margin_hunter.js
           node --check app/static/shop_spy.js
           node --check app/static/catalog_sync.js
           node --check app/static/product_research.js
-          node --check app/static/auto_radar.js
-          node --check app/static/tiered_radar.js
       - name: Run tests
         env:
           APP_ACCESS_MODE: local

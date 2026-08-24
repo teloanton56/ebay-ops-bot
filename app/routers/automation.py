@@ -11,7 +11,7 @@ from app.services.db import (
 )
 from app.services.ebay import EbayClient, EbayError
 from app.services.risk import assess_product
-from app.services.supplier_refresh import SupplierRefreshError, refresh_product_from_supplier
+from app.services.supplier_refresh import SupplierRefreshError, is_verified_cj_product, refresh_product_from_supplier
 
 router = APIRouter(prefix="/api/automation", tags=["Automation eBay US"])
 
@@ -64,7 +64,7 @@ async def sync_all():
     settings = get_settings()
     results = []
     for product in list_products():
-        if product.get("marketplace_id") != "EBAY_US" or product.get("currency") != "USD":
+        if not is_verified_cj_product(product):
             continue
         listing = get_listing_for_product(product["id"])
         if not listing or not listing.get("offer_id"):

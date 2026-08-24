@@ -3,7 +3,6 @@ from pathlib import Path
 
 from app.routers.supplier_flow import _cj_group
 from app.services.cj import CJClient
-from app.services import aliexpress_dropship_search as ali_search
 from app.services.supplier_relevance import (
     rank_supplier_results,
     supplier_relevance_score,
@@ -89,40 +88,6 @@ def test_cj_compare_fetches_wider_pool_and_filters_irrelevant_results(monkeypatc
     assert [row["supplier_sku"] for row in group["products"]] == ["GOOD-1"]
     assert group["filtered_out"] == 1
     assert group["products"][0]["match_strength"] == 1.0
-
-
-def test_aliexpress_search_uses_wider_pool_without_sales_sort_and_filters(monkeypatch):
-    monkeypatch.setattr(ali_search, "aliexpress_connection_status", lambda: {"connected": True})
-
-    async def fake_search(self, keyword, page_size=20):
-        assert keyword == "pokemon"
-        assert page_size == 50
-        return [
-            {
-                "itemId": "BAD-ALI",
-                "title": "Stylus Pen for Apple Pencil 2026",
-                "targetSalePrice": "4.19",
-                "targetOriginalPriceCurrency": "EUR",
-            },
-            {
-                "itemId": "GOOD-ALI",
-                "title": "Pokemon Pikachu collectible card album binder",
-                "targetSalePrice": "6.25",
-                "targetOriginalPriceCurrency": "EUR",
-            },
-        ]
-
-    monkeypatch.setattr(ali_search.AliExpressDropshipSearchClient, "search", fake_search)
-    offers, errors = asyncio.run(ali_search.aliexpress_dropship_supplier_offers("pokemon"))
-    assert errors == []
-    assert [row["supplier_sku"] for row in offers] == ["GOOD-ALI"]
-    assert offers[0]["match_strength"] == 1.0
-
-
-def test_aliexpress_text_search_does_not_force_sales_sort_anymore():
-    source = (ROOT / "app/services/aliexpress_dropship_search.py").read_text(encoding="utf-8")
-    assert '"sort": "salesDesc"' not in source
-    assert "page_size=50" in source
 
 
 def test_supplier_relevance_ui_stays_registered_on_current_version():

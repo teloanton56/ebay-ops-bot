@@ -7,14 +7,14 @@
   <meta name="robots" content="noindex,nofollow">
   <title>Connexion · Ops Bot</title>
   <link rel="icon" href="/static/app-icon.svg?v=ops-swoosh-1" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css?v=0.25.0">
+  <link rel="stylesheet" href="/static/app.css?v=0.25.3">
   <link rel="stylesheet" href="/static/brand.css?v=ops-swoosh-1">
 </head>
 <body class="login-page">
   <main class="login-shell">
     <section class="login-card">
       <div class="login-brand"><div class="brand-mark">O</div><div><strong>Ops Bot</strong><span>Espace privé</span></div></div>
-      <div class="login-copy"><span class="eyebrow">ACCÈS SÉCURISÉ</span><h1>Heureux de vous revoir.</h1><p>Connectez-vous pour retrouver vos produits, fournisseurs et résultats sur tous vos appareils.</p></div>
+      <div class="login-copy"><span class="eyebrow">ACCÈS SÉCURISÉ</span><h1>Heureux de vous revoir.</h1><p>Connectez-vous pour retrouver votre workflow eBay US et CJ sur tous vos appareils.</p></div>
       {% if error %}<div class="error-box" role="alert">{{ error }}</div>{% endif %}
       <form method="post" action="/api/cloud/login" class="login-form">
         <label>Adresse e-mail<input name="email" type="email" autocomplete="username" required autofocus></label>

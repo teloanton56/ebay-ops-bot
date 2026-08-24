@@ -26,7 +26,7 @@ def test_v023_removes_social_and_tiered_radar_from_active_shell():
     assert "auto_radar.router" not in main
 
 
-def test_social_discovery_endpoints_are_explicitly_retired():
+def test_removed_discovery_endpoints_are_absent():
     with TestClient(app) as client:
         discover = client.post("/api/radar/discover", json={"country": "US"})
         signals = client.post(
@@ -34,10 +34,8 @@ def test_social_discovery_endpoints_are_explicitly_retired():
             json={"keyword": "car organizer", "sources": ["youtube", "tiktok"], "country": "US"},
         )
 
-    assert discover.status_code == 410
-    assert signals.status_code == 410
-    assert "retir" in discover.json()["detail"].lower()
-    assert "retir" in signals.json()["detail"].lower()
+    assert discover.status_code == 404
+    assert signals.status_code == 404
 
 
 def test_scheduler_has_no_background_social_or_multisource_radar_jobs():
@@ -60,7 +58,7 @@ def test_radar_sources_are_only_ebay_us_and_cj():
     assert rows[1]["name"] == "CJ Dropshipping"
 
 
-def test_active_radar_scan_ignores_legacy_marketplace_arrays(monkeypatch):
+def test_active_radar_scan_rejects_legacy_marketplace_arrays(monkeypatch):
     from app.routers import radar as radar_router
 
     async def fake_ebay(keyword, marketplace):
@@ -91,8 +89,4 @@ def test_active_radar_scan_ignores_legacy_marketplace_arrays(monkeypatch):
             },
         )
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["marketplace"] == "EBAY_US"
-    assert len(data["markets"]) == 1
-    assert data["markets"][0]["marketplace"] == "EBAY_US"
+    assert response.status_code == 422

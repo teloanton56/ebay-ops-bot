@@ -25,6 +25,12 @@ class EbayClient:
     def __init__(self):
         self.s = get_settings()
 
+    def _us_marketplace(self, marketplace_id: str | None = None) -> str:
+        marketplace = str(marketplace_id or self.s.ebay_marketplace_id).upper()
+        if marketplace != "EBAY_US":
+            raise EbayError("Only EBAY_US is supported")
+        return "EBAY_US"
+
     def _basic_auth(self) -> str:
         raw = f"{self.s.ebay_client_id}:{self.s.ebay_client_secret}".encode()
         return "Basic " + base64.b64encode(raw).decode()
@@ -166,8 +172,9 @@ class EbayClient:
         return self.__class__._app_token_cache
 
     async def public_request(self, method: str, path: str, *, params=None, marketplace_id: str | None = None) -> dict:
+        marketplace = self._us_marketplace(marketplace_id)
         token = await self.get_application_token()
-        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "X-EBAY-C-MARKETPLACE-ID": marketplace_id or self.s.ebay_marketplace_id}
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "X-EBAY-C-MARKETPLACE-ID": marketplace}
         async with httpx.AsyncClient(timeout=45) as client:
             r = await client.request(method, f"{self.s.ebay_api_base}{path}", headers=headers, params=params)
         if r.is_error:
@@ -205,27 +212,6 @@ class EbayClient:
     async def get_orders(self, limit: int = 50) -> dict:
         return await self.request("GET", "/sell/fulfillment/v1/order", params={"limit": min(max(limit, 1), 200)})
 
-    async def create_inventory_location(self) -> dict:
-        s = self.s
-        if not s.ebay_write_enabled:
-            return {"dry_run": True, "reason": "EBAY_WRITE_ENABLED=false", "merchantLocationKey": s.ebay_merchant_location_key}
-        if not s.ebay_location_country or not s.ebay_location_postal_code:
-            raise EbayError("EBAY_LOCATION_COUNTRY and EBAY_LOCATION_POSTAL_CODE are required")
-        body = {
-            "location": {
-                "address": {
-                    "country": s.ebay_location_country,
-                    "postalCode": s.ebay_location_postal_code,
-                }
-            },
-            "name": "Main dispatch location",
-            "merchantLocationStatus": "ENABLED",
-            "locationTypes": ["WAREHOUSE"],
-        }
-        if s.ebay_location_city:
-            body["location"]["address"]["city"] = s.ebay_location_city
-        return await self.request("POST", f"/sell/inventory/v1/location/{s.ebay_merchant_location_key}", json_body=body)
-
     def build_inventory_item_payload(self, product: dict) -> dict:
         return {
             "availability": {"shipToLocationAvailability": {"quantity": max(int(product.get("stock") or 0), 0)}},
@@ -237,46 +223,6 @@ class EbayClient:
                 "imageUrls": product.get("images") or [],
             },
         }
-
-    def build_offer_payload(self, product: dict, price: float) -> dict:
-        s = self.s
-        missing = [name for name, val in {
-            "EBAY_PAYMENT_POLICY_ID": s.ebay_payment_policy_id,
-            "EBAY_RETURN_POLICY_ID": s.ebay_return_policy_id,
-            "EBAY_FULFILLMENT_POLICY_ID": s.ebay_fulfillment_policy_id,
-            "EBAY_MERCHANT_LOCATION_KEY": s.ebay_merchant_location_key,
-        }.items() if not val]
-        if missing:
-            raise EbayError("Missing eBay listing configuration: " + ", ".join(missing))
-        category_id = product.get("category_id")
-        if not category_id:
-            raise EbayError("Product category_id is required before an offer can be created")
-        return {
-            "sku": product["supplier_sku"],
-            "marketplaceId": product.get("marketplace_id") or s.ebay_marketplace_id,
-            "format": "FIXED_PRICE",
-            "availableQuantity": max(int(product.get("stock") or 0), 0),
-            "categoryId": str(category_id),
-            "merchantLocationKey": s.ebay_merchant_location_key,
-            "listingDescription": product.get("description") or product["title"],
-            "listingDuration": "GTC",
-            "listingPolicies": {
-                "paymentPolicyId": s.ebay_payment_policy_id,
-                "returnPolicyId": s.ebay_return_policy_id,
-                "fulfillmentPolicyId": s.ebay_fulfillment_policy_id,
-            },
-            "pricingSummary": {"price": {"value": f"{price:.2f}", "currency": product.get("currency") or s.ebay_currency}},
-        }
-
-    async def create_offer_for_product(self, product: dict, price: float) -> dict:
-        inventory_payload = self.build_inventory_item_payload(product)
-        offer_payload = self.build_offer_payload(product, price)
-        if not self.s.ebay_write_enabled:
-            return {"dry_run": True, "inventory_payload": inventory_payload, "offer_payload": offer_payload}
-        sku = product["supplier_sku"]
-        await self.request("PUT", f"/sell/inventory/v1/inventory_item/{sku}", json_body=inventory_payload)
-        offer = await self.request("POST", "/sell/inventory/v1/offer", json_body=offer_payload)
-        return {"dry_run": False, "offer": offer, "inventory_payload": inventory_payload, "offer_payload": offer_payload}
 
     async def publish_offer(self, offer_id: str) -> dict:
         if not self.s.ebay_publish_enabled:
@@ -294,6 +240,8 @@ class EbayClient:
         return await self.request("POST", f"/sell/fulfillment/v1/order/{order_id}/shipping_fulfillment", json_body=body)
 
     async def update_live_offer_price_quantity(self, sku: str, offer_id: str, price: float, quantity: int, currency: str) -> dict:
+        if str(currency or "").upper() != "USD":
+            raise EbayError("Only USD offer updates are supported")
         body = {
             "requests": [{
                 "sku": sku,
@@ -301,7 +249,7 @@ class EbayClient:
                 "offers": [{
                     "offerId": offer_id,
                     "availableQuantity": max(quantity, 0),
-                    "price": {"value": f"{price:.2f}", "currency": currency},
+                    "price": {"value": f"{price:.2f}", "currency": "USD"},
                 }],
             }]
         }

@@ -6,19 +6,21 @@ from pathlib import Path
 from fastapi import APIRouter, Response
 
 from app.config import get_settings
-from app.services.db import list_products, list_listings
+from app.services.db import list_products, list_listings, list_suppliers
 from app.services.ebay import EbayClient
 from app.services.diagnostics import build_safe_diagnostic
 from app.services.risk import assess_product
+from app.services.supplier_refresh import is_verified_cj_product
 
 router = APIRouter(prefix="/api/ui", tags=["UI"])
-VERSION = "0.25.2"
+VERSION = "0.25.3"
 
 
 def _active_products() -> list[dict]:
+    suppliers = {row["id"]: row for row in list_suppliers()}
     return [
         row for row in list_products()
-        if row.get("marketplace_id") == "EBAY_US" and row.get("currency") == "USD"
+        if is_verified_cj_product(row, suppliers.get(row.get("supplier_id")))
     ]
 
 
@@ -27,7 +29,8 @@ def summary():
     settings = get_settings()
     products = _active_products()
     risks = [assess_product(product) for product in products]
-    listings = list_listings()
+    product_ids = {row["id"] for row in products}
+    listings = [row for row in list_listings() if row.get("product_id") in product_ids]
     statuses = Counter((row.get("status") or "DRAFT") for row in listings)
     oauth = EbayClient().token_status()
 
@@ -63,7 +66,8 @@ def summary():
 
 @router.get("/listings")
 def listings():
-    return list_listings()
+    product_ids = {row["id"] for row in _active_products()}
+    return [row for row in list_listings() if row.get("product_id") in product_ids]
 
 
 @router.get("/system")

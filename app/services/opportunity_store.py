@@ -32,13 +32,12 @@ def _ensure_tables() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 opportunity_id INTEGER NOT NULL UNIQUE,
                 keyword TEXT NOT NULL,
-                marketplace TEXT NOT NULL DEFAULT 'EBAY_FR',
+                marketplace TEXT NOT NULL DEFAULT 'EBAY_US',
                 stage TEXT NOT NULL DEFAULT 'DETECTED',
                 selected_offer_key TEXT NOT NULL DEFAULT '',
                 selected_offer_json TEXT NOT NULL DEFAULT '{}',
                 supplier_snapshot_json TEXT NOT NULL DEFAULT '{}',
                 seller_snapshot_json TEXT NOT NULL DEFAULT '{}',
-                amazon_snapshot_json TEXT NOT NULL DEFAULT '{}',
                 risk_json TEXT NOT NULL DEFAULT '{}',
                 listing_json TEXT NOT NULL DEFAULT '{}',
                 monitoring_enabled INTEGER NOT NULL DEFAULT 0,
@@ -80,11 +79,14 @@ def _decode_workflow(row: dict[str, Any]) -> dict[str, Any]:
         ("selected_offer_json", "selected_offer", {}),
         ("supplier_snapshot_json", "supplier_snapshot", {}),
         ("seller_snapshot_json", "seller_snapshot", {}),
-        ("amazon_snapshot_json", "amazon_snapshot", {}),
         ("risk_json", "risk", {}),
         ("listing_json", "listing", {}),
     ):
         result[target] = _json_load(result.pop(source, None), default)
+    # Ignore obsolete cross-market snapshot columns when reading an existing database.
+    for key in tuple(result):
+        if key.endswith("_snapshot_json"):
+            result.pop(key, None)
     result["monitoring_enabled"] = bool(result.get("monitoring_enabled"))
     result["stage_label"] = STAGE_LABELS.get(result.get("stage"), result.get("stage"))
     return result
@@ -102,10 +104,11 @@ def _get_opportunity(opportunity_id: int) -> dict[str, Any] | None:
     for source, target, default in (
         ("sources_json", "sources", []),
         ("factors_json", "factors", []),
-        ("social_json", "social", {}),
         ("payload_json", "payload", {}),
     ):
         result[target] = _json_load(result.pop(source, None), default)
+    result.pop("social_score", None)
+    result.pop("social_json", None)
     return result
 
 
@@ -160,6 +163,11 @@ def ensure_workflow(opportunity_id: int) -> dict[str, Any]:
     opportunity = _get_opportunity(opportunity_id)
     if not opportunity:
         raise ValueError("Opportunité Radar introuvable")
+    if (
+        str(opportunity.get("marketplace") or "") != "EBAY_US"
+        or str(opportunity.get("currency") or "").upper() != "USD"
+    ):
+        raise ValueError("Seules les opportunités eBay US en USD peuvent créer un dossier")
     existing = _workflow_by_opportunity(opportunity_id)
     if existing:
         return _with_opportunity(existing, opportunity)
@@ -174,7 +182,7 @@ def ensure_workflow(opportunity_id: int) -> dict[str, Any]:
             (
                 opportunity_id,
                 str(opportunity.get("keyword") or opportunity.get("title") or "Produit"),
-                str(opportunity.get("marketplace") or "EBAY_FR"),
+                "EBAY_US",
                 "DETECTED",
                 now,
                 now,
@@ -194,7 +202,7 @@ def _with_opportunity(workflow: dict[str, Any], opportunity: dict[str, Any] | No
     merged["title"] = opportunity.get("title") or workflow.get("keyword")
     merged["image_url"] = opportunity.get("image_url") or ""
     merged["market_price"] = opportunity.get("median_price")
-    merged["currency"] = opportunity.get("currency") or "EUR"
+    merged["currency"] = opportunity.get("currency") or "USD"
     return merged
 
 
@@ -202,7 +210,11 @@ def get_workflow(workflow_id: int) -> dict[str, Any]:
     workflow = _workflow_by_id(workflow_id)
     if not workflow:
         raise ValueError("Dossier de lancement introuvable")
+    if workflow.get("marketplace") != "EBAY_US":
+        raise ValueError("Dossier legacy hors mode eBay US / USD")
     result = _with_opportunity(workflow)
+    if str(result.get("currency") or "").upper() != "USD":
+        raise ValueError("Dossier hors mode eBay US / USD")
     result["events"] = workflow_events(workflow_id, 30)
     from app.services.opportunity_monitor import workflow_readiness
     result["readiness"] = workflow_readiness(result)
@@ -213,16 +225,17 @@ def list_workflows(limit: int = 100) -> list[dict[str, Any]]:
     _ensure_tables()
     with conn() as database:
         rows = database.execute(
-            "SELECT * FROM opportunity_workflows ORDER BY updated_at DESC LIMIT ?",
+            "SELECT * FROM opportunity_workflows WHERE marketplace='EBAY_US' ORDER BY updated_at DESC LIMIT ?",
             (min(max(int(limit), 1), 200),),
         ).fetchall()
-    return [_with_opportunity(_decode_workflow(dict(row))) for row in rows]
+    workflows = [_with_opportunity(_decode_workflow(dict(row))) for row in rows]
+    return [row for row in workflows if str(row.get("currency") or "").upper() == "USD"]
 
 
 def _update_workflow(workflow_id: int, **fields: Any) -> dict[str, Any]:
     allowed = {
         "stage", "selected_offer_key", "selected_offer_json", "supplier_snapshot_json",
-        "seller_snapshot_json", "amazon_snapshot_json", "risk_json", "listing_json",
+        "seller_snapshot_json", "risk_json", "listing_json",
         "monitoring_enabled", "last_monitored_at", "readiness_score",
     }
     values = {key: value for key, value in fields.items() if key in allowed}

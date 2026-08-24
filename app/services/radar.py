@@ -3,13 +3,11 @@ from statistics import median
 
 from app.config import get_settings
 from app.services.cj import CJClient
-from app.services.connections import AmazonRadarClient
 from app.services.db import previous_radar_scan, save_radar_scan
 from app.services.ebay import EbayClient
 
 
 MARKETPLACES = {"EBAY_US": "eBay United States"}
-AMAZON_MARKETPLACES = {key: value["name"] for key, value in AmazonRadarClient.marketplaces.items()}
 
 
 def source_statuses() -> list[dict]:
@@ -25,7 +23,7 @@ def source_statuses() -> list[dict]:
             "configured": ebay_keys,
             "ready": ebay_live,
             "status": "Ready" if ebay_live else "Production keys required",
-            "note": "Active US listings and seller competition. This is the only market used by v0.23.",
+            "note": "Active US listings and seller competition. This is the only supported market.",
         },
         {
             "id": "cj",
@@ -41,21 +39,23 @@ def source_statuses() -> list[dict]:
 
 async def analyze_ebay_market(keyword: str, marketplace: str = "EBAY_US") -> dict:
     if marketplace != "EBAY_US":
-        raise ValueError("v0.23 analyse uniquement eBay US")
+        raise ValueError("Le Radar analyse uniquement eBay US")
     payload = await EbayClient().search_items(keyword, limit=50, marketplace_id="EBAY_US")
     items = payload.get("itemSummaries") or []
-    prices, currencies = [], []
+    prices = []
+    usd_items = []
     for item in items:
         price = item.get("price") or {}
+        currency = str(price.get("currency") or "USD").upper()
+        if currency != "USD":
+            continue
+        usd_items.append(item)
         try:
             if price.get("value") is not None:
                 prices.append(float(price["value"]))
         except (TypeError, ValueError):
             pass
-        if price.get("currency"):
-            currencies.append(str(price["currency"]))
-    currency = Counter(currencies).most_common(1)[0][0] if currencies else "USD"
-    sellers = [str((item.get("seller") or {}).get("username") or "").strip() for item in items]
+    sellers = [str((item.get("seller") or {}).get("username") or "").strip() for item in usd_items]
     sellers = [seller for seller in sellers if seller]
     seller_counts = Counter(sellers)
     top_seller, top_count = seller_counts.most_common(1)[0] if seller_counts else ("", 0)
@@ -65,7 +65,7 @@ async def analyze_ebay_market(keyword: str, marketplace: str = "EBAY_US") -> dic
         "marketplace": "EBAY_US",
         "marketplace_name": "eBay United States",
         "total_results": int(payload.get("total") or len(items)),
-        "currency": currency,
+        "currency": "USD",
         "median_price": round(median(prices), 2) if prices else None,
         "min_price": round(min(prices), 2) if prices else None,
         "max_price": round(max(prices), 2) if prices else None,
@@ -82,7 +82,7 @@ async def analyze_ebay_market(keyword: str, marketplace: str = "EBAY_US") -> dic
                 "image_url": ((item.get("image") or {}).get("imageUrl") or ""),
                 "item_url": item.get("itemWebUrl") or "",
             }
-            for item in items[:8]
+            for item in usd_items[:8]
         ],
     }
     scan_id = save_radar_scan(result)
@@ -96,38 +96,3 @@ async def analyze_ebay_market(keyword: str, marketplace: str = "EBAY_US") -> dic
             1,
         )
     return result
-
-
-# Kept only for dormant legacy modules/tests. It is not exposed by v0.23 UI or Radar.
-async def analyze_amazon_market(keyword: str, marketplace: str) -> dict:
-    payload = await AmazonRadarClient().search_catalog(keyword, marketplace, page_size=20)
-    products = payload.get("products") or []
-    prices = [float(row["price"]) for row in products if row.get("price") is not None]
-    return {
-        "keyword": keyword,
-        "source": "AMAZON",
-        "marketplace": marketplace,
-        "marketplace_name": AMAZON_MARKETPLACES.get(marketplace, marketplace),
-        "total_results": int(payload.get("total") or len(products)),
-        "currency": payload.get("currency") or "USD",
-        "median_price": round(median(prices), 2) if prices else None,
-        "min_price": round(min(prices), 2) if prices else None,
-        "max_price": round(max(prices), 2) if prices else None,
-        "conversion_rate": None,
-        "search_volume": None,
-        "items": products[:8],
-    }
-
-
-def build_rfq_message(company: str, product_query: str, quantities: str, specifications: str = "") -> str:
-    company_line = f" {company}" if company else ""
-    specs = specifications.strip() or "Please provide full product specifications and compliance documents."
-    return (
-        f"Hello{company_line},\n\n"
-        f"We are evaluating a long-term supply partnership for: {product_query}.\n\n"
-        f"Please quote the unit price for these quantities: {quantities}.\n"
-        "Please include MOQ, sample price, DDP shipping to the United States, lead time, "
-        "certifications, packaging/private-label options, warranty and defect policy.\n\n"
-        f"Product requirements: {specs}\n\n"
-        "No order is confirmed by this request.\n\nBest regards"
-    )

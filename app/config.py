@@ -68,9 +68,9 @@ class Settings:
     ebay_client_secret: str = _env("EBAY_CLIENT_SECRET")
     ebay_runame: str = _env("EBAY_RUNAME")
 
-    # v0.23 operating profile: one market, one currency, one supplier.
+    # Operating profile: one market, one currency, one supplier.
     # These are intentionally not environment-overridable so stale Render values
-    # from the former France configuration cannot silently switch the bot back.
+    # from an older regional configuration cannot silently switch the bot back.
     ebay_locale: str = "en-US"
     ebay_marketplace_id: str = "EBAY_US"
     ebay_currency: str = "USD"
@@ -89,23 +89,18 @@ class Settings:
     # real merchant location keys before enabling writes; no fake US location is used.
     ebay_cj_us_location_key: str = _env("EBAY_CJ_US_LOCATION_KEY", "")
     ebay_cj_cn_location_key: str = _env("EBAY_CJ_CN_LOCATION_KEY", "")
-    ebay_merchant_location_key: str = _env("EBAY_MERCHANT_LOCATION_KEY", "")
-    ebay_location_country: str = "US"
-    ebay_location_postal_code: str = _env("EBAY_LOCATION_POSTAL_CODE")
-    ebay_location_city: str = _env("EBAY_LOCATION_CITY")
 
     # Conservative eBay US baseline for a new/Starter seller in most categories.
     # The pricing engine can later replace this with category-specific fees.
     default_ebay_fee_percent: float = _env_float("DEFAULT_EBAY_FEE_PERCENT", "13.6")
     default_ad_rate_percent: float = _env_float("DEFAULT_AD_RATE_PERCENT", "3.0")
-    default_fixed_fee: float = _env_float("DEFAULT_FIXED_FEE", "0.40")
     ebay_low_order_fee: float = _env_float("EBAY_LOW_ORDER_FEE", "0.30")
     ebay_standard_order_fee: float = _env_float("EBAY_STANDARD_ORDER_FEE", "0.40")
     default_return_reserve_percent: float = _env_float("DEFAULT_RETURN_RESERVE_PERCENT", "2.0")
 
     # Global catalogue safety floor. CJ route-specific thresholds below are stricter.
     min_margin_percent: float = _env_float("MIN_MARGIN_PERCENT", "20.0")
-    min_profit_eur: float = _env_float("MIN_PROFIT_EUR", "5.0")
+    min_profit_usd: float = _env_float("MIN_PROFIT_USD", "5.0")
     min_stock: int = _env_int("MIN_STOCK", "10")
     max_shipping_days: int = _env_int("MAX_SHIPPING_DAYS", "7")
     max_supplier_price_jump_percent: float = _env_float("MAX_SUPPLIER_PRICE_JUMP_PERCENT", "20.0")
@@ -136,7 +131,7 @@ class Settings:
     @property
     def min_profit_amount(self) -> float:
         """Currency-neutral alias retained while legacy DB/settings names are migrated."""
-        return self.min_profit_eur
+        return self.min_profit_usd
 
     @property
     def ebay_effective_env(self) -> str:

@@ -1,4 +1,0 @@
-﻿supplier_sku;title;description;supplier_cost;shipping_cost;stock;shipping_days;target_price;category_id;condition;marketplace_id;currency;images;aspects_json
-DEMO-001;Support téléphone voiture magnétique;Support magnétique compact pour voiture;6.50;2.50;48;3;24.90;;NEW;EBAY_FR;EUR;;{"Type":["Support téléphone"],"Couleur":["Noir"]}
-DEMO-002;Lampe LED rechargeable compacte;Lampe LED rechargeable pour intérieur;9.90;3.00;25;4;32.90;;NEW;EBAY_FR;EUR;;{"Type":["Lampe LED"]}
-DEMO-003;Organisateur coffre voiture pliable;Organisateur pliable pour coffre automobile;13.40;4.50;18;5;39.90;;NEW;EBAY_FR;EUR;;{"Type":["Organisateur coffre"]}

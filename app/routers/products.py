@@ -1,10 +1,7 @@
-import csv
-import io
-import json
 import re
-from typing import Any
+from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
@@ -23,15 +20,15 @@ from app.services.db import (
 from app.services.profit import calculate_profit, suggest_price
 from app.services.risk import assess_product
 from app.services.scoring import calculate_product_score
+from app.services.supplier_refresh import is_verified_cj_product
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
 
 
-def _active_us_product(product: dict) -> bool:
-    return (
-        (product.get("marketplace_id") or "") == "EBAY_US"
-        and (product.get("currency") or "") == "USD"
-    )
+def _active_cj_product(product: dict, suppliers: dict[int, dict] | None = None) -> bool:
+    supplier_map = suppliers or {row["id"]: row for row in list_suppliers()}
+    supplier = supplier_map.get(product.get("supplier_id"))
+    return is_verified_cj_product(product, supplier)
 
 
 def _fee_model() -> dict:
@@ -70,7 +67,7 @@ def _duplicate_product_for_title(title: str, product_id: int) -> dict | None:
         (
             row for row in list_products()
             if int(row.get("id") or 0) != product_id
-            and _active_us_product(row)
+            and _active_cj_product(row)
             and _normalized_title(row.get("title") or "") == normalized
         ),
         None,
@@ -136,55 +133,6 @@ async def _verified_product_identity(product: dict) -> dict:
     }
 
 
-def _import_csv_text(text: str, supplier_id: int | None = None):
-    sample = text[:4096]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
-    required = {"supplier_sku", "title", "supplier_cost"}
-    if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
-        raise HTTPException(400, f"CSV must include: {sorted(required)}")
-
-    ids: list[int] = []
-    errors: list[dict[str, Any]] = []
-    for idx, row in enumerate(reader, start=2):
-        try:
-            def fnum(name, default=0.0):
-                value = (row.get(name) or "").strip()
-                return float(value.replace(",", ".")) if value else default
-
-            def fint(name, default=0):
-                value = (row.get(name) or "").strip()
-                return int(float(value)) if value else default
-
-            images = [x.strip() for x in (row.get("images") or "").split("|") if x.strip()]
-            aspects = json.loads(row.get("aspects_json") or "{}")
-            data = {
-                "supplier_sku": row["supplier_sku"].strip(),
-                "title": row["title"].strip(),
-                "description": row.get("description") or "",
-                "supplier_cost": fnum("supplier_cost"),
-                "shipping_cost": fnum("shipping_cost"),
-                "stock": fint("stock"),
-                "shipping_days": fint("shipping_days"),
-                "target_price": fnum("target_price", None) if (row.get("target_price") or "").strip() else None,
-                "category_id": (row.get("category_id") or "").strip() or None,
-                "condition": (row.get("condition") or "NEW").strip(),
-                "marketplace_id": "EBAY_US",
-                "currency": "USD",
-                "images": images,
-                "aspects": aspects,
-                "supplier_id": supplier_id,
-                "product_status": (row.get("product_status") or "À tester").strip(),
-            }
-            ids.append(upsert_product(data))
-        except Exception as exc:
-            errors.append({"line": idx, "error": str(exc)})
-    return {"imported": len(ids), "product_ids": ids, "errors": errors, "marketplace": "EBAY_US", "currency": "USD"}
-
-
 class ProductIn(BaseModel):
     supplier_sku: str = Field(min_length=1, max_length=50)
     title: str = Field(min_length=1, max_length=200)
@@ -196,24 +144,12 @@ class ProductIn(BaseModel):
     target_price: float | None = Field(default=None, gt=0)
     category_id: str | None = None
     condition: str = "NEW"
-    marketplace_id: str | None = None
-    currency: str | None = None
+    marketplace_id: Literal["EBAY_US"] | None = None
+    currency: Literal["USD"] | None = None
     images: list[str] = Field(default_factory=list)
     aspects: dict[str, list[str]] = Field(default_factory=dict)
     supplier_id: int | None = None
     product_status: str = "À tester"
-
-
-class SupplierOfferIn(BaseModel):
-    provider: str = Field(min_length=2, max_length=40)
-    supplier_sku: str = Field(min_length=1, max_length=80)
-    name: str = Field(min_length=1, max_length=250)
-    price: float = Field(ge=0)
-    shipping_cost: float = Field(default=0, ge=0)
-    currency: str = Field(default="USD", min_length=3, max_length=3)
-    stock: int | None = Field(default=None, ge=0)
-    shipping_days: int | None = Field(default=None, ge=0)
-    image_url: str = Field(default="", max_length=1000)
 
 
 class SeoOptimizeIn(BaseModel):
@@ -223,26 +159,7 @@ class SeoOptimizeIn(BaseModel):
 @router.get("")
 def products():
     suppliers = {row["id"]: row for row in list_suppliers()}
-    return [_with_live_scores(p, suppliers) for p in list_products() if _active_us_product(p)]
-
-
-@router.post("")
-def create_product(payload: ProductIn):
-    data = payload.model_dump()
-    data["marketplace_id"] = "EBAY_US"
-    data["currency"] = "USD"
-    product_id = upsert_product(data)
-    product = get_product(product_id)
-    scored = _with_live_scores(product)
-    return {"product": product, "risk": scored["risk"], "product_score": scored["product_score"]}
-
-
-@router.post("/from-supplier-offer")
-def create_from_supplier_offer(_: SupplierOfferIn):
-    raise HTTPException(
-        410,
-        "v0.25 utilise uniquement le flux CJ vérifié. Ajoutez le produit depuis Radar US / CJ.",
-    )
+    return [_with_live_scores(p, suppliers) for p in list_products() if _active_cj_product(p, suppliers)]
 
 
 @router.put("/{product_id}")
@@ -250,8 +167,11 @@ def update_product(product_id: int, payload: ProductIn):
     existing = get_product(product_id)
     if not existing:
         raise HTTPException(404, "Product not found")
+    if not _active_cj_product(existing):
+        raise HTTPException(410, "Produit hors flux CJ vérifié")
     data = payload.model_dump()
     data["supplier_sku"] = existing["supplier_sku"]
+    data["supplier_id"] = existing["supplier_id"]
     data["marketplace_id"] = "EBAY_US"
     data["currency"] = "USD"
     pid = upsert_product(data)
@@ -275,6 +195,11 @@ class StatusIn(BaseModel):
 def change_status(product_id: int, payload: StatusIn):
     if payload.status not in {"À tester", "Winner", "Rejeté"}:
         raise HTTPException(400, "Statut invalide")
+    product = get_product(product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    if not _active_cj_product(product):
+        raise HTTPException(410, "Produit hors flux CJ vérifié")
     if not set_product_fields(product_id, product_status=payload.status):
         raise HTTPException(404, "Product not found")
     return get_product(product_id)
@@ -285,8 +210,8 @@ def price_suggestion(product_id: int):
     product = get_product(product_id)
     if not product:
         raise HTTPException(404, "Product not found")
-    if not _active_us_product(product):
-        raise HTTPException(409, "Ce produit appartient à l'ancien catalogue. Re-sourcer en eBay US / USD.")
+    if not _active_cj_product(product):
+        raise HTTPException(409, "Ce produit n'appartient pas au flux CJ vérifié pour eBay US / USD.")
     shipping_days = int(product.get("shipping_days") or 0)
     if shipping_days <= 0 or shipping_days >= 99:
         raise HTTPException(400, "Impossible de calculer un prix fiable tant que la livraison US n'est pas confirmée.")
@@ -306,8 +231,8 @@ def margin_simulator(product_id: int, sale_price: float | None = None):
     product = get_product(product_id)
     if not product:
         raise HTTPException(404, "Product not found")
-    if not _active_us_product(product):
-        raise HTTPException(409, "Simulateur disponible uniquement pour eBay US / USD")
+    if not _active_cj_product(product):
+        raise HTTPException(409, "Simulateur disponible uniquement pour le flux CJ vers eBay US / USD")
     return {
         "profit": calculate_profit(product, sale_price),
         "fee_model": _fee_model(),
@@ -324,8 +249,8 @@ async def optimize_ebay(product_id: int, payload: SeoOptimizeIn):
     product = get_product(product_id)
     if not product:
         raise HTTPException(404, "Product not found")
-    if not _active_us_product(product):
-        raise HTTPException(409, "SEO disponible uniquement pour eBay US / USD")
+    if not _active_cj_product(product):
+        raise HTTPException(409, "SEO disponible uniquement pour le flux CJ vers eBay US / USD")
 
     identity = await _verified_product_identity(product)
     keywords = [str(value).strip() for value in payload.market_keywords if str(value).strip()]
@@ -384,8 +309,8 @@ def prepare_ebay(product_id: int):
     product = get_product(product_id)
     if not product:
         raise HTTPException(404, "Product not found")
-    if not _active_us_product(product):
-        raise HTTPException(409, "Seuls les produits eBay US / USD peuvent être préparés dans v0.25.")
+    if not _active_cj_product(product):
+        raise HTTPException(409, "Seuls les produits CJ vérifiés pour eBay US / USD peuvent être préparés.")
     risk = assess_product(product)
     if not risk["pass"]:
         raise HTTPException(400, "Le Risk Engine bloque cette préparation : " + " ; ".join(risk["blocks"]))
@@ -416,32 +341,9 @@ def product(product_id: int):
     p = get_product(product_id)
     if not p:
         raise HTTPException(404, "Product not found")
-    if not _active_us_product(p):
-        raise HTTPException(410, "Produit legacy hors mode eBay US / USD")
+    if not _active_cj_product(p):
+        raise HTTPException(410, "Produit hors flux CJ vérifié pour eBay US / USD")
     return _with_live_scores(p)
-
-
-@router.post("/import-csv")
-async def import_csv(file: UploadFile = File(...)):
-    raw = await file.read()
-    return _import_csv_text(raw.decode("utf-8-sig"))
-
-
-@router.post("/import-csv/{supplier_id}")
-async def import_csv_for_supplier(supplier_id: int, file: UploadFile = File(...)):
-    from app.services.db import get_supplier
-    supplier = get_supplier(supplier_id)
-    if not supplier:
-        raise HTTPException(404, "Fournisseur introuvable")
-    if str(supplier.get("provider_code") or "").lower() != "cj":
-        raise HTTPException(410, "v0.25 n'utilise que CJ comme fournisseur actif")
-    raw = await file.read()
-    return _import_csv_text(raw.decode("utf-8-sig"), supplier_id)
-
-
-@router.post("/load-demo")
-def load_demo():
-    raise HTTPException(410, "Le catalogue démo a été retiré du mode eBay US / CJ only")
 
 
 @router.post("/{product_id}/generate-listing")

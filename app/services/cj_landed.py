@@ -199,7 +199,7 @@ async def _resolve_route_from_detail(
 ) -> dict[str, Any]:
     warehouse = warehouse.upper()
     if warehouse not in ALLOWED_WAREHOUSE_COUNTRIES:
-        raise CJError("La stratégie v0.23 autorise uniquement les entrepôts CJ US et CN")
+        raise CJError("La stratégie autorise uniquement les entrepôts CJ US et CN")
 
     await _refresh_variant_inventory_if_needed(client, detail, warehouse)
     candidates = _variant_candidates_for_country(
@@ -295,6 +295,9 @@ async def resolve_cj_landed_routes(
     pid = str(pid or "").strip()
     if not pid:
         raise CJError("Identifiant produit CJ manquant")
+    destination_country = str(destination_country or "").upper()
+    if destination_country != "US":
+        raise CJError("La destination CJ autorisée est uniquement US")
 
     settings = get_settings()
     detail = await client.product_detail(pid)
@@ -428,10 +431,23 @@ def _link_key(supplier_sku: str) -> str:
 
 
 def save_cj_product_link(supplier_sku: str, landed: dict[str, Any]) -> None:
+    pid = str(landed.get("pid") or "").strip()
+    variant_id = str(landed.get("variant_id") or "").strip()
+    warehouse = str(landed.get("warehouse") or "").upper()
+    destination_country = str(landed.get("destination_country") or "").upper()
+    currency = str(landed.get("currency") or "").upper()
+    if not pid or not variant_id:
+        raise ValueError("Le lien CJ exige un produit et une variante vérifiés")
+    if warehouse not in ALLOWED_WAREHOUSE_COUNTRIES:
+        raise ValueError("Le lien CJ exige un entrepôt US ou CN")
+    if destination_country != "US" or currency != "USD":
+        raise ValueError("Le lien CJ exige une livraison vers US calculée en USD")
     payload = {
-        "pid": str(landed.get("pid") or ""),
-        "variant_id": str(landed.get("variant_id") or ""),
-        "warehouse": str(landed.get("warehouse") or ""),
+        "pid": pid,
+        "variant_id": variant_id,
+        "warehouse": warehouse,
+        "destination_country": destination_country,
+        "currency": currency,
         "risk_flags": landed.get("risk_flags") or [],
         "verified_at": datetime.now(timezone.utc).isoformat(),
     }
