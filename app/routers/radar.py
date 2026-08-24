@@ -89,7 +89,7 @@ async def run_radar_scan(payload: ScanIn):
         "research_summary": research_summary,
         "measured_only": True,
         "note": (
-            "Le Radar v0.25.3 mesure uniquement eBay US. Le score repose sur des annonces actives observées ; "
+            "Le Radar v0.25.4 mesure uniquement eBay US. Le score repose sur des annonces actives observées ; "
             "eBay ne fournit pas le volume exact de recherches concurrentes via Browse API."
         ),
     }

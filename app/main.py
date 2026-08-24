@@ -19,7 +19,7 @@ from app.services.ebay import EbayClient
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.config import get_settings
 
-VERSION = "0.25.3"
+VERSION = "0.25.4"
 BRAND_REV = "ops-swoosh-1"
 
 

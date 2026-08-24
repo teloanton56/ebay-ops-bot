@@ -20,14 +20,11 @@ def test_sandbox_app_id_forces_sandbox_hosts():
     assert settings.ebay_api_base == "https://api.sandbox.ebay.com"
 
 
-def test_guided_dashboard_configures_production_ebay_us():
+def test_dashboard_does_not_expose_ebay_credentials():
     ui = (ROOT / "app/static/simple_ui.js").read_text(encoding="utf-8")
     dashboard = (ROOT / "app/templates/dashboard.html").read_text(encoding="utf-8")
-    assert "eBay Production Client ID" in ui
-    assert "environment: 'production'" in ui
-    assert "marketplace_id: 'EBAY_US'" in ui
-    assert "currency: 'USD'" in ui
-    assert 'data-action="connect-ebay"' in dashboard
+    assert "eBay Production Client ID" not in ui
+    assert 'data-action="connect-ebay"' not in dashboard
 
 
 def test_saving_prd_key_persists_production_environment(tmp_path, monkeypatch):

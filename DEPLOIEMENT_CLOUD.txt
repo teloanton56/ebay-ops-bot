@@ -1,4 +1,4 @@
-EBAY US · CJ OPS BOT v0.25.3 — MISE EN LIGNE
+EBAY US · CJ OPS BOT v0.25.4 — MISE EN LIGNE
 ======================================
 
 Ce dossier est prêt pour un hébergement Docker avec disque persistant.

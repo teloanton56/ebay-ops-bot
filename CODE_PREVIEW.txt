@@ -1,4 +1,4 @@
-eBay US · CJ Ops Bot v0.25.3 — structure principale
+eBay US · CJ Ops Bot v0.25.4 — structure principale
 
 app/main.py                    FastAPI, dashboard et /health
 app/templates/dashboard.html  interface eBay US / CJ
