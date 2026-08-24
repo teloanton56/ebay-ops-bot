@@ -13,7 +13,6 @@
     ebay: ['eBay US', 'Préparer uniquement les produits validés.'],
     support: ['SAV', 'Gérer les incidents après les premières commandes.'],
     finance: ['Finance', 'Suivre les ventes et la rentabilité réelle.'],
-    settings: ['Connexions', 'Seulement eBay US et CJ Dropshipping.'],
   };
 
   async function api(url, options = {}) {
@@ -112,12 +111,6 @@
       $('#statCj').textContent = cj.connected ? 'Connecté' : 'À connecter';
       setConnectedChip('#cjChip', cj.connected, cj.connected ? 'CJ connecté' : 'CJ à connecter');
       setConnectedChip('#ebayChip', ebay.connected, ebay.connected ? 'eBay connecté' : 'eBay à connecter');
-      $('#cjConnectionText').textContent = cj.connected
-        ? 'Connecté. Coûts et fret calculés uniquement vers les États-Unis.'
-        : 'Connectez CJ pour analyser et importer des produits.';
-      $('#ebayConnectionText').textContent = ebay.connected
-        ? 'Compte eBay connecté en mode US.'
-        : (ebay.configured ? 'Clés configurées. Autorisez maintenant le compte eBay.' : 'Ajoutez vos clés eBay Production puis connectez le compte.');
       updateNextStep();
     } catch (error) {
       toast(error.message, true);
@@ -131,10 +124,10 @@
     const text = $('#nextStepText');
     const button = $('#nextStepButton');
     if (!cjConnected) {
-      title.textContent = 'Connectez CJ Dropshipping';
-      text.textContent = 'Le Radar mesure eBay US. CJ est nécessaire pour vérifier la marge réelle.';
-      button.textContent = 'Ouvrir les connexions';
-      button.dataset.go = 'settings';
+      title.textContent = 'CJ Dropshipping doit être disponible';
+      text.textContent = 'La clé CJ se configure côté serveur. Une fois active, recherchez un produit pour vérifier sa marge réelle.';
+      button.textContent = 'Ouvrir CJ Dropshipping';
+      button.dataset.go = 'suppliers';
     } else if (products === 0) {
       title.textContent = 'Trouvez votre premier produit';
       text.textContent = 'Analysez une niche, puis importez un candidat CJ en un clic.';
@@ -250,7 +243,7 @@
       renderCjSearch(result.products || []);
     } catch (error) {
       $('#cjResults').className = 'empty-state compact guided-empty';
-      $('#cjResults').innerHTML = `<strong>Recherche CJ impossible</strong><span>${escapeHtml(error.message)}</span><button class="btn btn-soft" type="button" data-go="settings">Vérifier la connexion CJ</button>`;
+      $('#cjResults').innerHTML = `<strong>Recherche CJ impossible</strong><span>${escapeHtml(error.message)}</span>`;
     }
   }
 
@@ -449,34 +442,6 @@
     } catch (_) {}
   }
 
-  async function configureCj() {
-    const key = window.prompt('Collez votre clé API CJ Dropshipping :');
-    if (!key) return;
-    try {
-      await api('/api/cj/settings', { method: 'POST', body: JSON.stringify({ api_key: key.trim() }) });
-      toast('CJ connecté.');
-      await loadSummary();
-    } catch (error) { toast(error.message, true); }
-  }
-
-  async function configureEbay() {
-    const current = await api('/api/settings/ebay');
-    if (current.configured) {
-      location.href = '/api/auth/ebay/start';
-      return;
-    }
-    const clientId = window.prompt('eBay Production Client ID :');
-    if (!clientId) return;
-    const clientSecret = window.prompt('eBay Production Client Secret :');
-    if (!clientSecret) return;
-    const runame = window.prompt('eBay RuName :');
-    if (!runame) return;
-    try {
-      await api('/api/settings/ebay', { method: 'POST', body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, runame, environment: 'production', marketplace_id: 'EBAY_US', currency: 'USD' }) });
-      location.href = '/api/auth/ebay/start';
-    } catch (error) { toast(error.message, true); }
-  }
-
   document.addEventListener('click', event => {
     const go = event.target.closest('[data-go]');
     if (go) { event.preventDefault(); show(go.dataset.go); return; }
@@ -495,8 +460,6 @@
     if (optimize) { optimizeProduct(optimize.dataset.optimizeProduct, optimize); return; }
     const prepare = event.target.closest('[data-prepare-product]');
     if (prepare) { prepareProduct(prepare.dataset.prepareProduct, prepare); return; }
-    if (event.target.closest('[data-action="configure-cj"]')) { configureCj(); return; }
-    if (event.target.closest('[data-action="connect-ebay"]')) { configureEbay(); return; }
   });
 
   $('#mobileMenu')?.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));

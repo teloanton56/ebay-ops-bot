@@ -18,13 +18,13 @@ from app.services.supplier_refresh import is_verified_cj_product
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_v0253_health_and_pwa_version_match():
+def test_v0254_health_and_pwa_version_match():
     with TestClient(app) as client:
         health = client.get("/health")
     assert health.status_code == 200
     assert health.json() == {
         "ok": True,
-        "version": "0.25.3",
+        "version": "0.25.4",
         "demo_mode": True,
         "mode": "local",
         "operating_mode": "EBAY_US_CJ_ONLY",
@@ -33,8 +33,8 @@ def test_v0253_health_and_pwa_version_match():
         "destination_country": "US",
     }
     worker = (ROOT / "app/static/service-worker.js").read_text(encoding="utf-8")
-    assert "opsbot-v0.25.3-shell" in worker
-    assert "/static/simple_ui.js?v=0.25.3" in worker
+    assert "opsbot-v0.25.4-shell" in worker
+    assert "/static/simple_ui.js?v=0.25.4" in worker
 
 
 def test_removed_integrations_have_no_module_asset_or_route():

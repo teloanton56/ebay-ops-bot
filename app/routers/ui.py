@@ -13,7 +13,7 @@ from app.services.risk import assess_product
 from app.services.supplier_refresh import is_verified_cj_product
 
 router = APIRouter(prefix="/api/ui", tags=["UI"])
-VERSION = "0.25.3"
+VERSION = "0.25.4"
 
 
 def _active_products() -> list[dict]:

@@ -1,6 +1,6 @@
 # eBay US · CJ Ops Bot
 
-Version **0.25.3**. Le bot fonctionne avec un périmètre volontairement unique :
+Version **0.25.4**. Le bot fonctionne avec un périmètre volontairement unique :
 
 - canal de vente : **eBay US** (`EBAY_US`) ;
 - devise : **USD** ;
@@ -45,7 +45,7 @@ Renseignez dans `.env` les identifiants eBay correspondant au même environnemen
 
 Le profil `EBAY_US` / `USD` est verrouillé dans le code. Les anciennes valeurs régionales présentes dans un environnement externe ne peuvent pas modifier ce profil.
 
-La clé CJ est ajoutée depuis l'écran **CJ Dropshipping**. Elle est chiffrée dans le stockage persistant. Aucune commande fournisseur n'est créée par cette version.
+La clé CJ est administrée côté serveur et chiffrée dans le stockage persistant. L'interface ne présente plus de page de gestion des connexions. Aucune commande fournisseur n'est créée par cette version.
 
 Avant toute écriture réelle eBay, configurez les Business Policies et les vraies clés de lieux d'expédition CJ :
 
@@ -87,7 +87,7 @@ La CI exécute les contrôles sous Python 3.14, comme l'image Docker de producti
 ```json
 {
   "ok": true,
-  "version": "0.25.3",
+  "version": "0.25.4",
   "operating_mode": "EBAY_US_CJ_ONLY",
   "marketplace": "EBAY_US",
   "currency": "USD",

@@ -1,4 +1,4 @@
-eBay US · CJ Ops Bot v0.25.3
+eBay US · CJ Ops Bot v0.25.4
 =====================
 
 WINDOWS :

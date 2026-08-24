@@ -105,7 +105,7 @@ def test_ebay_seo_uses_only_relevant_market_hints_without_replacing_identity():
 def test_pwa_and_ui_versions_follow_v0253():
     main = read("app/main.py")
     worker = read("app/static/service-worker.js")
-    assert 'VERSION = "0.25.3"' in main
-    assert "opsbot-v0.25.3-shell" in worker
-    assert "/static/simple_ui.js?v=0.25.3" in worker
-    assert "/static/simple_ui.css?v=0.25.3" in worker
+    assert 'VERSION = "0.25.4"' in main
+    assert "opsbot-v0.25.4-shell" in worker
+    assert "/static/simple_ui.js?v=0.25.4" in worker
+    assert "/static/simple_ui.css?v=0.25.4" in worker

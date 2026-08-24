@@ -12,7 +12,7 @@ from app.services.cj import CJClient
 from app.services.db import conn
 from app.services.ebay import EbayClient
 
-VERSION = "0.25.3"
+VERSION = "0.25.4"
 
 TABLES = {
     "Produits": "products",
